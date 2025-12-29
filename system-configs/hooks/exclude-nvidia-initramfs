@@ -1,0 +1,30 @@
+#!/bin/sh
+# Exclude NVIDIA modules from initramfs to prevent early loading
+# This fixes boot logo flickering caused by NVIDIA/i915 display handoff
+# NVIDIA will still load normally after boot from /lib/modules
+
+PREREQ=""
+
+prereqs()
+{
+    echo "$PREREQ"
+}
+
+case $1 in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Remove NVIDIA DKMS modules from initramfs
+rm -rf "${DESTDIR}/usr/lib/modules/"*/updates/dkms/nvidia*.ko* 2>/dev/null || true
+rm -rf "${DESTDIR}/lib/modules/"*/updates/dkms/nvidia*.ko* 2>/dev/null || true
+
+# Remove excessive NVIDIA firmware (keep only what's needed for this GPU)
+# Your RTX 3050 is GA107, so we only need ga107 firmware
+find "${DESTDIR}/usr/lib/firmware/nvidia" -mindepth 1 -maxdepth 1 -type d ! -name 'ga107' -exec rm -rf {} \; 2>/dev/null || true
+
+exit 0

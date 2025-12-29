@@ -1,0 +1,30 @@
+#!/bin/sh
+# Exclude i915 from initramfs to prevent early loading and display flickering
+# i915 will load normally after boot from /lib/modules
+# This gives smooth boot: BIOS logo -> Plymouth -> Login (no flicker)
+
+PREREQ=""
+
+prereqs()
+{
+    echo "$PREREQ"
+}
+
+case $1 in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Remove i915 module from initramfs
+rm -rf "${DESTDIR}/usr/lib/modules/"*/kernel/drivers/gpu/drm/i915 2>/dev/null || true
+rm -rf "${DESTDIR}/lib/modules/"*/kernel/drivers/gpu/drm/i915 2>/dev/null || true
+
+# Remove i915 firmware as well (not needed in initramfs)
+rm -rf "${DESTDIR}/usr/lib/firmware/i915" 2>/dev/null || true
+rm -rf "${DESTDIR}/lib/firmware/i915" 2>/dev/null || true
+
+exit 0

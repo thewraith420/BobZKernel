@@ -1,0 +1,11 @@
+--- Makefile.orig	2025-12-28 20:00:00.000000000 -0500
++++ Makefile	2025-12-28 21:00:00.000000000 -0500
+@@ -575,7 +575,7 @@
+ KBUILD_RUSTFLAGS :=
+ KBUILD_RUSTFLAGS_MODULE :=
+
+-KBUILD_CFLAGS :=
++KBUILD_CFLAGS := -march=native -mtune=native
+ KBUILD_CFLAGS += -std=gnu11
+ KBUILD_CFLAGS += -fshort-wchar
+ KBUILD_CFLAGS += -funsigned-char

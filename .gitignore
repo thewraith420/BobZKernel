@@ -1,0 +1,37 @@
+# Kernel source and build artifacts
+builds/linux/
+*.tar.xz
+*.tar.gz
+*.deb
+
+# Kernel config backups (keep only the main .config)
+configs/.config.old
+configs/.config.backup-*
+configs/.config.pre-*
+
+# Claude Code artifacts
+.claude/
+
+# Temporary files
+*.tmp
+*.log
+*~
+
+# Build outputs
+*.o
+*.ko
+*.ko.zst
+*.a
+.*.cmd
+modules.order
+Module.symvers
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
