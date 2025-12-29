@@ -208,9 +208,9 @@ sudo tlp start
 
 - **Power Settings:** `/etc/tlp.conf`
 - **Boot Parameters:** `/etc/default/grub`
-- **Battery Documentation:** `/home/bob/buildstuff/KernelDev/docs/power-optimizations-applied.md`
-- **AC Documentation:** `/home/bob/buildstuff/KernelDev/docs/ac-performance-optimizations.md`
-- **Build Notes:** `/home/bob/buildstuff/KernelDev/docs/build-notes.md`
+- **Battery Documentation:** `/home/bob/buildstuff/BobzKernel/docs/power-optimizations-applied.md`
+- **AC Documentation:** `/home/bob/buildstuff/BobzKernel/docs/ac-performance-optimizations.md`
+- **Build Notes:** `/home/bob/buildstuff/BobzKernel/docs/build-notes.md`
 
 ---
 

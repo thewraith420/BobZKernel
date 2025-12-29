@@ -4,7 +4,7 @@
 
 set -e
 
-BACKUP_DIR="/home/bob/buildstuff/KernelDev/system-configs"
+BACKUP_DIR="/home/bob/buildstuff/BobzKernel/system-configs"
 DATE=$(date +%Y%m%d-%H%M%S)
 
 echo "=== BobZKernel System Configuration Backup ==="

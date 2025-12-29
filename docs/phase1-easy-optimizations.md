@@ -333,7 +333,7 @@ CONFIG_SND_HRTIMER=y
 
 1. **Build the kernel:**
    ```bash
-   cd /home/bob/buildstuff/KernelDev
+   cd /home/bob/buildstuff/BobzKernel
    ./scripts/install-kernel.sh
    ```
 

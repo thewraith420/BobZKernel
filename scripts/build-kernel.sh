@@ -10,8 +10,8 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-KERNEL_DIR="/home/bob/buildstuff/KernelDev/builds/linux"
-CONFIG_FILE="/home/bob/buildstuff/KernelDev/configs/.config"
+KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
+CONFIG_FILE="/home/bob/buildstuff/BobzKernel/configs/.config"
 LOCALVERSION="-BobZKernel"
 NUM_JOBS="${1:-1}"  # Default to single job to avoid interruptions
 

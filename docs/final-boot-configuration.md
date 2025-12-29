@@ -233,12 +233,12 @@ BobZKernel is **12.6 seconds faster!**
 - `/etc/fstab` - EFI mount with nofail option
 
 ### Documentation (In Repository)
-- `/home/bob/buildstuff/KernelDev/docs/build-notes.md`
-- `/home/bob/buildstuff/KernelDev/docs/power-optimizations-applied.md`
-- `/home/bob/buildstuff/KernelDev/docs/ac-performance-optimizations.md`
-- `/home/bob/buildstuff/KernelDev/docs/phase1-easy-optimizations.md`
-- `/home/bob/buildstuff/KernelDev/docs/boot-flicker-fix.md`
-- `/home/bob/buildstuff/KernelDev/docs/final-boot-configuration.md` (this file)
+- `/home/bob/buildstuff/BobzKernel/docs/build-notes.md`
+- `/home/bob/buildstuff/BobzKernel/docs/power-optimizations-applied.md`
+- `/home/bob/buildstuff/BobzKernel/docs/ac-performance-optimizations.md`
+- `/home/bob/buildstuff/BobzKernel/docs/phase1-easy-optimizations.md`
+- `/home/bob/buildstuff/BobzKernel/docs/boot-flicker-fix.md`
+- `/home/bob/buildstuff/BobzKernel/docs/final-boot-configuration.md` (this file)
 
 ---
 

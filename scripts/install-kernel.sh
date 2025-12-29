@@ -11,7 +11,7 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-KERNEL_DIR="/home/bob/buildstuff/KernelDev/builds/linux"
+KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
 LOCALVERSION="-BobZKernel"
 
 echo -e "${BLUE}=== BobZKernel Installation Script ===${NC}"

@@ -146,7 +146,7 @@ sudo apt-get install -y build-essential bc bison flex libelf-dev libssl-dev \
 
 ### Step 2: Restore System Configurations
 ```bash
-cd /home/bob/buildstuff/KernelDev
+cd /home/bob/buildstuff/BobzKernel
 sudo ./system-configs/restore-configs.sh
 ```
 

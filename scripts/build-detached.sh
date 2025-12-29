@@ -23,7 +23,7 @@ echo ""
 
 # Start the build in a detached screen session
 screen -dmS "$SESSION_NAME" bash -c "
-cd /home/bob/buildstuff/KernelDev
+cd /home/bob/buildstuff/BobzKernel
 echo '=== Starting BobZKernel Build ==='
 echo 'Session: $SESSION_NAME'
 echo 'Time: $(date)'

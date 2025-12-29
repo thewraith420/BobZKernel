@@ -3,15 +3,15 @@
 ## Your Current Setup
 
 - **Kernel Version:** 6.14.0
-- **Saved Config:** `/home/bob/buildstuff/KernelDev/configs/.config`
-- **Source Location:** `/home/bob/buildstuff/KernelDev/builds/linux`
-- **Build Script:** `/home/bob/buildstuff/KernelDev/scripts/build-kernel.sh`
+- **Saved Config:** `/home/bob/buildstuff/BobzKernel/configs/.config`
+- **Source Location:** `/home/bob/buildstuff/BobzKernel/builds/linux`
+- **Build Script:** `/home/bob/buildstuff/BobzKernel/scripts/build-kernel.sh`
 
 ## Build Process
 
 ### Step 1: Navigate to kernel source
 ```bash
-cd ~/buildstuff/KernelDev/builds/linux
+cd ~/buildstuff/BobzKernel/builds/linux
 ```
 
 ### Step 2: Copy your saved configuration
@@ -23,7 +23,7 @@ make oldconfig  # Update config for new kernel (press Enter to accept defaults)
 ### Step 3: Build the kernel
 ```bash
 # Option A: Use the build script
-~/buildstuff/KernelDev/scripts/build-kernel.sh .
+~/buildstuff/BobzKernel/scripts/build-kernel.sh .
 
 # Option B: Manual build (4x parallelism)
 make -j4

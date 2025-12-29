@@ -87,17 +87,17 @@ intel_idle.max_cstate=8
 
 ## Files Modified
 
-- /home/bob/buildstuff/KernelDev/configs/.config
+- /home/bob/buildstuff/BobzKernel/configs/.config
 - /etc/initramfs-tools/initramfs.conf (MODULES=dep)
 - /etc/modprobe.d/blacklist-nouveau.conf
 - /etc/initramfs-tools/conf.d/exclude-old-firmware.conf
 - /etc/initramfs-tools/conf.d/no-lvm.conf
-- /home/bob/buildstuff/KernelDev/scripts/install-kernel.sh (DKMS auto-build)
+- /home/bob/buildstuff/BobzKernel/scripts/install-kernel.sh (DKMS auto-build)
 
 ## Build Command
 
 ```bash
-cd /home/bob/buildstuff/KernelDev
+cd /home/bob/buildstuff/BobzKernel
 ./scripts/build-kernel.sh 8
 sudo ./scripts/install-kernel.sh
 ```

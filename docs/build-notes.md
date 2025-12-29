@@ -103,7 +103,7 @@ sudo apt-get install build-essential bc bison flex libelf-dev libssl-dev zstd
 
 ### Build Commands
 ```bash
-cd /home/bob/buildstuff/KernelDev
+cd /home/bob/buildstuff/BobzKernel
 ./scripts/build-kernel.sh 10    # Use -j10 (adjust for your RAM)
 sudo ./scripts/install-kernel.sh
 ```

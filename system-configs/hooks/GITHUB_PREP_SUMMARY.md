@@ -146,7 +146,7 @@ Before pushing to GitHub:
 
 ```bash
 # Initialize git (if not already)
-cd /home/bob/buildstuff/KernelDev
+cd /home/bob/buildstuff/BobzKernel
 git init
 
 # Add all files (respecting .gitignore)
