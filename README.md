@@ -1,7 +1,7 @@
 # BobZKernel - Custom Linux Kernel for Lenovo LOQ 15IRH8
 
-**Version:** 6.14.0-BobZKernel  
-**Date:** December 28, 2025  
+**Version:** 6.14.0-BobZKernel
+**Date:** December 29, 2025
 **Status:** Production Ready
 
 ---
@@ -27,6 +27,7 @@ Custom-built Linux kernel optimized for the Lenovo LOQ 15IRH8 gaming laptop, fea
 ✅ ZSWAP+ZSTD - 60-80% less swap I/O
 ✅ BFQ Scheduler - Smoother multitasking
 ✅ march=native - CPU-optimized (AVX2, AES-NI)
+✅ LTO Thin - Link-time optimization (3-7% gain)
 
 ### Power Management
 ✅ AC: Maximum performance (Turbo Boost)  
@@ -43,9 +44,9 @@ Custom-built Linux kernel optimized for the Lenovo LOQ 15IRH8 gaming laptop, fea
 ## Quick Start
 
 ```bash
-# Build kernel
+# Build kernel (with LTO Thin)
 cd builds/linux
-make KCONFIG_CONFIG=../../configs/.config LOCALVERSION=-BobZKernel -j10
+make LLVM=1 KCONFIG_CONFIG=../../configs/.config LOCALVERSION=-BobZKernel -j11
 
 # Install
 cd ../..
@@ -145,15 +146,16 @@ Rebuild DKMS: `sudo dkms autoinstall -k $(uname -r)`
 
 ### Phase 2 Implemented
 ✅ **march=native** - CPU-specific compilation using AVX2, AES-NI, SHA-NI
+✅ **LTO Thin** - Link-time optimization (3-7% performance gain)
 
 ### Phase 2 Options (Available)
+- LTO Full (extra 2-3% over Thin, requires heavy swap usage)
 - BORE Scheduler (better responsiveness)
-- LTO Compilation (5-10% faster)
 - CachyOS patches (collection of improvements)
 
 See `docs/kernel-customization-options.md` for details.
 
 ---
 
-**Status:** ✅ Production Ready  
-**Last Updated:** December 28, 2025
+**Status:** ✅ Production Ready
+**Last Updated:** December 29, 2025
