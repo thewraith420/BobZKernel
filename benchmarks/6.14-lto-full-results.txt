@@ -1,0 +1,56 @@
+BobZKernel 6.14.0 LTO Full - Benchmark Results
+==============================================
+Date: December 30, 2025
+Kernel: 6.14.0-BobZKernel #5 SMP PREEMPT_DYNAMIC
+Compiler: Clang 20.1.2 + LLD
+Optimizations: LTO Full, march=native, CachyOS patches, BBRv3
+Hardware: Lenovo LOQ 15IRH8 (i5-13450HX, 8GB RAM, NVMe SSD)
+
+CPU Benchmarks (Sysbench)
+--------------------------
+Single Thread (events/sec):    693.52
+Multi Thread 10-core (events/sec): 5620.57
+Scaling efficiency: 8.1x (81% - excellent for 10 cores)
+
+Memory Benchmark
+-----------------
+Transfer Rate: 4328.23 MiB/sec
+Total Transferred: 10240 MiB
+Time: 2.36 seconds
+
+Disk I/O Benchmark (Sequential Write)
+--------------------------------------
+Write Speed: 534.52 MiB/sec
+Time: 10.00 seconds
+
+System Info
+-----------
+CPU Governor: Performance (AC) / Powersave (Battery) via TLP
+Swap: 18GB (2GB + 16GB build swap)
+WiFi: Power saving disabled (rtw89 driver stability)
+
+Optimizations Active
+--------------------
+✓ LTO Full
+✓ march=native (i5-13450HX optimized)
+✓ CachyOS patches (BBRv3, ZSTD, base)
+✓ ntsync built-in
+✓ HZ=1000
+✓ AMD/Nouveau drivers removed
+✓ vm.max_map_count=2147483642
+
+Notes
+-----
+- Benchmark run after 8+ hours of stable operation
+- No thermal throttling during tests
+- System was idle during benchmarks
+- Compare these results with future 6.18 LTS build
+
+To Re-run These Benchmarks
+---------------------------
+sysbench cpu --cpu-max-prime=20000 --threads=1 run
+sysbench cpu --cpu-max-prime=20000 --threads=10 run
+sysbench memory --memory-total-size=10G --threads=4 run
+sysbench fileio --file-total-size=2G --file-test-mode=seqwr --threads=4 prepare
+sysbench fileio --file-total-size=2G --file-test-mode=seqwr --threads=4 run
+sysbench fileio --file-total-size=2G cleanup

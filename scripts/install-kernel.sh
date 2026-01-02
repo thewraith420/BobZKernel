@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
-LOCALVERSION="-BobZKernel"
+LOCALVERSION="-BobZKernel-6.18"
 
 echo -e "${BLUE}=== BobZKernel Installation Script ===${NC}"
 echo "Installing Linux kernel $LOCALVERSION"
@@ -39,10 +39,10 @@ if [ ! -f "arch/x86/boot/bzImage" ]; then
 fi
 
 echo -e "${BLUE}Step 1: Installing kernel...${NC}"
-make LOCALVERSION=$LOCALVERSION install
+make LLVM=1 LOCALVERSION=$LOCALVERSION install
 
 echo -e "${BLUE}Step 2: Installing modules...${NC}"
-make LOCALVERSION=$LOCALVERSION modules_install
+make LLVM=1 LOCALVERSION=$LOCALVERSION modules_install
 
 KERNEL_VERSION=$(make LOCALVERSION=$LOCALVERSION kernelrelease)
 
@@ -72,6 +72,6 @@ echo -e "${YELLOW}your current kernel if the new one doesn't work.${NC}"
 echo ""
 echo -e "${BLUE}To boot the new kernel:${NC}"
 echo "  1. Reboot your system"
-echo "  2. At GRUB menu, select 'Linux 6.14.0$LOCALVERSION'"
+echo "  2. At GRUB menu, select 'Linux 6.18.0$LOCALVERSION'"
 echo "  3. If it boots successfully, you're good!"
 echo "  4. If it fails, select your old kernel to boot back"

@@ -1,5 +1,5 @@
 # Kernel source and build artifacts
-builds/linux/
+builds/
 *.tar.xz
 *.tar.gz
 *.deb

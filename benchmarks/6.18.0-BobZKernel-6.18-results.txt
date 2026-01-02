@@ -1,0 +1,163 @@
+BobZKernel Benchmark Results
+============================
+Kernel: 6.18.0-BobZKernel-6.18
+Date: 2026-01-02 00:38:03
+Hardware: Lenovo LOQ 15IRH8 (i5-13450HX, 8GB RAM, NVMe SSD)
+Compiler: bob@bob-LOQ-15IRH8)
+Ubuntu
+0ubuntu1~24.04.2),
+
+=== CPU Benchmark - Single Thread ===
+sysbench 1.0.20 (using system LuaJIT 2.1.0-beta3)
+
+Running the test with following options:
+Number of threads: 1
+Initializing random number generator from current time
+
+
+Prime numbers limit: 20000
+
+Initializing worker threads...
+
+Threads started!
+
+CPU speed:
+    events per second:  1503.85
+
+General statistics:
+    total time:                          10.0008s
+    total number of events:              15041
+
+Latency (ms):
+         min:                                    0.65
+         avg:                                    0.66
+         max:                                    0.88
+         95th percentile:                        0.68
+         sum:                                 9998.82
+
+Threads fairness:
+    events (avg/stddev):           15041.0000/0.00
+    execution time (avg/stddev):   9.9988/0.00
+
+
+=== CPU Benchmark - Multi Thread (10 cores) ===
+sysbench 1.0.20 (using system LuaJIT 2.1.0-beta3)
+
+Running the test with following options:
+Number of threads: 10
+Initializing random number generator from current time
+
+
+Prime numbers limit: 20000
+
+Initializing worker threads...
+
+Threads started!
+
+CPU speed:
+    events per second: 11183.80
+
+General statistics:
+    total time:                          10.0008s
+    total number of events:              111857
+
+Latency (ms):
+         min:                                    0.66
+         avg:                                    0.89
+         max:                                   19.79
+         95th percentile:                        1.30
+         sum:                                99982.17
+
+Threads fairness:
+    events (avg/stddev):           11185.7000/1824.15
+    execution time (avg/stddev):   9.9982/0.00
+
+
+=== Memory Benchmark ===
+sysbench 1.0.20 (using system LuaJIT 2.1.0-beta3)
+
+Running the test with following options:
+Number of threads: 4
+Initializing random number generator from current time
+
+
+Running memory speed test with the following options:
+  block size: 1KiB
+  total size: 10240MiB
+  operation: write
+  scope: global
+
+Initializing worker threads...
+
+Threads started!
+
+Total operations: 10485760 (9848499.57 per second)
+
+10240.00 MiB transferred (9617.68 MiB/sec)
+
+
+General statistics:
+    total time:                          1.0638s
+    total number of events:              10485760
+
+Latency (ms):
+         min:                                    0.00
+         avg:                                    0.00
+         max:                                    0.12
+         95th percentile:                        0.00
+         sum:                                 3440.94
+
+Threads fairness:
+    events (avg/stddev):           2621440.0000/0.00
+    execution time (avg/stddev):   0.8602/0.02
+
+
+=== Disk I/O Benchmark ===
+Preparing test files...
+Running sequential write test...
+sysbench 1.0.20 (using system LuaJIT 2.1.0-beta3)
+
+Running the test with following options:
+Number of threads: 4
+Initializing random number generator from current time
+
+
+Extra file open flags: (none)
+128 files, 16MiB each
+2GiB total file size
+Block size 16KiB
+Periodic FSYNC enabled, calling fsync() each 100 requests.
+Calling fsync() at the end of test, Enabled.
+Using synchronous I/O mode
+Doing sequential write (creation) test
+Initializing worker threads...
+
+Threads started!
+
+
+File operations:
+    reads/s:                      0.00
+    writes/s:                     51442.23
+    fsyncs/s:                     65892.74
+
+Throughput:
+    read, MiB/s:                  0.00
+    written, MiB/s:               803.78
+
+General statistics:
+    total time:                          10.0025s
+    total number of events:              1173243
+
+Latency (ms):
+         min:                                    0.00
+         avg:                                    0.03
+         max:                                    8.97
+         95th percentile:                        0.17
+         sum:                                39751.31
+
+Threads fairness:
+    events (avg/stddev):           293310.7500/1077.26
+    execution time (avg/stddev):   9.9378/0.00
+
+Cleaning up...
+

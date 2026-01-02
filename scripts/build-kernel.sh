@@ -11,14 +11,15 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
-CONFIG_FILE="/home/bob/buildstuff/BobzKernel/configs/.config"
-LOCALVERSION="-BobZKernel"
+CONFIG_FILE="/home/bob/buildstuff/BobzKernel/configs/.config-6.18"
+LOCALVERSION="-BobZKernel-6.18"
 NUM_JOBS="${1:-1}"  # Default to single job to avoid interruptions
 
 echo -e "${BLUE}=== BobZKernel Build Script ===${NC}"
 echo "Building Linux kernel $LOCALVERSION for Lenovo Legion"
 echo "Kernel directory: $KERNEL_DIR"
 echo "Build jobs: $NUM_JOBS"
+echo "Compiler: LLVM/Clang"
 echo ""
 
 # Check if kernel directory exists
@@ -43,13 +44,13 @@ else
     make defconfig
 fi
 
-# Build the kernel
+# Build the kernel with LLVM/Clang
 echo -e "${BLUE}Step 3: Building kernel image (this may take 10-30 minutes)...${NC}"
-make LOCALVERSION=$LOCALVERSION -j$NUM_JOBS bzImage
+make LLVM=1 LOCALVERSION=$LOCALVERSION -j$NUM_JOBS bzImage
 
 # Build modules
 echo -e "${BLUE}Step 4: Building kernel modules...${NC}"
-make LOCALVERSION=$LOCALVERSION -j$NUM_JOBS modules
+make LLVM=1 LOCALVERSION=$LOCALVERSION -j$NUM_JOBS modules
 
 echo -e "${GREEN}=== Build Complete! ===${NC}"
 echo ""
@@ -57,7 +58,7 @@ echo "Kernel image: arch/x86/boot/bzImage"
 echo "LOCALVERSION: $LOCALVERSION"
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
-echo "  1. Install kernel: sudo make LOCALVERSION=$LOCALVERSION install"
-echo "  2. Install modules: sudo make LOCALVERSION=$LOCALVERSION modules_install"
+echo "  1. Install kernel: sudo make LLVM=1 LOCALVERSION=$LOCALVERSION install"
+echo "  2. Install modules: sudo make LLVM=1 LOCALVERSION=$LOCALVERSION modules_install"
 echo "  3. Update bootloader: sudo update-grub"
-echo "  4. Reboot and select 'Linux 6.14.0$LOCALVERSION' from GRUB"
+echo "  4. Reboot and select 'Linux 6.18.0$LOCALVERSION' from GRUB"
