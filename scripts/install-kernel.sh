@@ -66,7 +66,12 @@ dkms autoinstall -k "$KERNEL_VERSION" || {
 echo -e "${BLUE}Step 6: Regenerating initramfs...${NC}"
 update-initramfs -c -k $KERNEL_VERSION
 
-echo -e "${BLUE}Step 7: Updating bootloader...${NC}"
+echo -e "${BLUE}Step 7: Building VMware modules (if installed)...${NC}"
+bash /home/bob/buildstuff/BobzKernel/scripts/build-vmware-modules.sh "$KERNEL_VERSION" || {
+    echo -e "${YELLOW}Note: VMware modules not built (VMware may not be installed)${NC}"
+}
+
+echo -e "${BLUE}Step 8: Updating bootloader...${NC}"
 update-grub
 
 echo -e "${GREEN}=== Installation Complete! ===${NC}"
