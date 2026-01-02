@@ -41,11 +41,27 @@ Custom-built Linux kernel optimized for the Lenovo LOQ 15IRH8 gaming laptop, fea
 
 ---
 
+## Branch Strategy
+
+This repository uses a structured branching approach for managing different kernel variants and experimental features:
+
+| Branch | Purpose | Status |
+|--------|---------|--------|
+| **`stable`** | Current production kernel (6.14.0-BobZKernel) | ✅ Active |
+| **`dev`** | Integration branch for testing new features | 🔧 Ready |
+| **`feature/6.18-lts`** | Upgrade to Linux 6.18 LTS | 📋 Planned |
+| **`feature/generic-build`** | Distributable kernel (march=generic) | 📋 Planned |
+| **`feature/recovery-usb`** | Lightweight rescue kernel | 📋 Planned |
+
+**Full details:** See [BRANCHES.md](BRANCHES.md)
+
+---
+
 ## Quick Start
 
 ```bash
-# Build kernel (with LTO Thin)
-cd builds/linux
+# Build kernel (with LTO Full)
+cd builds/linux-6.14-cachyos
 make LLVM=1 KCONFIG_CONFIG=../../configs/.config LOCALVERSION=-BobZKernel -j11
 
 # Install
