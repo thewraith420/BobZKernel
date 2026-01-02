@@ -50,19 +50,23 @@ echo -e "${BLUE}Step 3: Compressing modules with zstd...${NC}"
 find /lib/modules/$KERNEL_VERSION -name '*.ko' -exec zstd --rm -q -T0 {} \;
 depmod -a $KERNEL_VERSION
 
-echo -e "${BLUE}Step 4: Building DKMS modules for new kernel...${NC}"
+echo -e "${BLUE}Step 4: Patching DKMS sources for compatibility...${NC}"
+# Patch DKMS sources before building to fix known API incompatibilities
+bash /home/bob/buildstuff/BobzKernel/scripts/patch-dkms-sources.sh
+
+echo -e "${BLUE}Step 5: Building DKMS modules for new kernel...${NC}"
 echo "Building DKMS modules for kernel: $KERNEL_VERSION"
 
 # Build all DKMS modules for the new kernel
 dkms autoinstall -k "$KERNEL_VERSION" || {
     echo -e "${YELLOW}Warning: Some DKMS modules failed to build${NC}"
-    echo -e "${YELLOW}You may need to rebuild them manually after boot${NC}"
+    echo -e "${YELLOW}Check the log for details${NC}"
 }
 
-echo -e "${BLUE}Step 5: Regenerating initramfs...${NC}"
+echo -e "${BLUE}Step 6: Regenerating initramfs...${NC}"
 update-initramfs -c -k $KERNEL_VERSION
 
-echo -e "${BLUE}Step 6: Updating bootloader...${NC}"
+echo -e "${BLUE}Step 7: Updating bootloader...${NC}"
 update-grub
 
 echo -e "${GREEN}=== Installation Complete! ===${NC}"
