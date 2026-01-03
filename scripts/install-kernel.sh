@@ -56,8 +56,24 @@ bash /home/bob/buildstuff/BobzKernel/scripts/patch-dkms-sources.sh
 
 echo -e "${BLUE}Step 5: Building DKMS modules for new kernel...${NC}"
 echo "Building DKMS modules for kernel: $KERNEL_VERSION"
+echo "Forcing DKMS to use Clang to match kernel compiler..."
 
-# Build all DKMS modules for the new kernel
+# Export Clang compiler variables to force DKMS to use Clang
+export CC=clang
+export CXX=clang++
+export LD=ld.lld
+export AR=llvm-ar
+export NM=llvm-nm
+export STRIP=llvm-strip
+export OBJCOPY=llvm-objcopy
+export OBJDUMP=llvm-objdump
+export READELF=llvm-readelf
+export HOSTCC=clang
+export HOSTCXX=clang++
+export HOSTAR=llvm-ar
+export HOSTLD=ld.lld
+
+# Build all DKMS modules for the new kernel with Clang
 dkms autoinstall -k "$KERNEL_VERSION" || {
     echo -e "${YELLOW}Warning: Some DKMS modules failed to build${NC}"
     echo -e "${YELLOW}Check the log for details${NC}"

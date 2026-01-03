@@ -1,0 +1,10 @@
+#!/bin/bash
+# TLP hook script: runs when switching to AC power
+# Enables full preemption for better gaming/responsiveness
+
+PREEMPT_PATH="/sys/kernel/debug/sched/preempt"
+
+if [ -w "$PREEMPT_PATH" ]; then
+    echo "full" > "$PREEMPT_PATH"
+    logger -t tlp-hook "Switched to full preemption (AC power)"
+fi

@@ -1,0 +1,10 @@
+#!/bin/bash
+# TLP hook script: runs when switching to battery power
+# Reduces to voluntary preemption for better battery life
+
+PREEMPT_PATH="/sys/kernel/debug/sched/preempt"
+
+if [ -w "$PREEMPT_PATH" ]; then
+    echo "voluntary" > "$PREEMPT_PATH"
+    logger -t tlp-hook "Switched to voluntary preemption (battery power)"
+fi
