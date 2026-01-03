@@ -14,6 +14,7 @@ KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
 CONFIG_FILE="/home/bob/buildstuff/BobzKernel/configs/.config-6.18"
 LOCALVERSION="-BobZKernel-6.18"
 NUM_JOBS="${1:-1}"  # Default to single job to avoid interruptions
+BUILD_LOG="/home/bob/buildstuff/BobzKernel/build.log"
 
 echo -e "${BLUE}=== BobZKernel Build Script ===${NC}"
 echo "Building Linux kernel $LOCALVERSION for Lenovo Legion"
@@ -46,11 +47,11 @@ fi
 
 # Build the kernel with LLVM/Clang
 echo -e "${BLUE}Step 3: Building kernel image (this may take 10-30 minutes)...${NC}"
-make LLVM=1 LOCALVERSION=$LOCALVERSION -j$NUM_JOBS bzImage
+make LLVM=1 LOCALVERSION=$LOCALVERSION -j$NUM_JOBS bzImage 2>&1 | tee -a "$BUILD_LOG"
 
 # Build modules
 echo -e "${BLUE}Step 4: Building kernel modules...${NC}"
-make LLVM=1 LOCALVERSION=$LOCALVERSION -j$NUM_JOBS modules
+make LLVM=1 LOCALVERSION=$LOCALVERSION -j$NUM_JOBS modules 2>&1 | tee -a "$BUILD_LOG"
 
 echo -e "${GREEN}=== Build Complete! ===${NC}"
 echo ""
