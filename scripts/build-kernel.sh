@@ -40,6 +40,8 @@ echo -e "${BLUE}Step 2: Applying kernel configuration...${NC}"
 if [ -f "$CONFIG_FILE" ]; then
     cp "$CONFIG_FILE" .config
     echo "Configuration applied from $CONFIG_FILE"
+    # Auto-accept defaults for any new/changed config options
+    make LLVM=1 olddefconfig
 else
     echo -e "${RED}Warning: Config file not found, using defconfig${NC}"
     make defconfig
