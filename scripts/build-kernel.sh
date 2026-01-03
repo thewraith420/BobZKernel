@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
 CONFIG_FILE="/home/bob/buildstuff/BobzKernel/configs/.config-6.18"
 LOCALVERSION="-BobZKernel-6.18"
-NUM_JOBS="${1:-1}"  # Default to single job to avoid interruptions
+NUM_JOBS="${1:-11}"  # Default to 11 jobs (leaves 1 core free for usability)
 BUILD_LOG="/home/bob/buildstuff/BobzKernel/build.log"
 
 echo -e "${BLUE}=== BobZKernel Build Script ===${NC}"
