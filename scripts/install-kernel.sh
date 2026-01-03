@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
-LOCALVERSION="-BobZKernel-6.18"
+LOCALVERSION="-BobZKernel"
 
 echo -e "${BLUE}=== BobZKernel Installation Script ===${NC}"
 echo "Installing Linux kernel $LOCALVERSION"

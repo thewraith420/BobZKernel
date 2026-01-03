@@ -11,6 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 KERNEL_VERSION="${1:-}"
+KBUILD_DIR="/lib/modules/$KERNEL_VERSION/build"
 
 if [ -z "$KERNEL_VERSION" ]; then
     echo -e "${RED}Error: kernel version required${NC}"
@@ -20,6 +21,7 @@ fi
 
 echo -e "${BLUE}=== Building VMware Modules for $KERNEL_VERSION ===${NC}"
 echo ""
+# Set the working directory for building
 
 # Check if VMware modules are installed
 if [ ! -f "/usr/lib/vmware/modules/source/vmmon.tar" ]; then
@@ -58,32 +60,38 @@ fi
 # Build vmmon
 echo -e "${BLUE}Step 4: Building vmmon module...${NC}"
 cd vmmon-only
-make LLVM=1 > /dev/null 2>&1 && echo -e "${GREEN}✓ vmmon built${NC}" || {
-    echo -e "${RED}✗ vmmon build failed${NC}"
+make VM_UNAME="$KERNEL_VERSION" LLVM=1 CC=clang LD=ld.lld 2>&1 | grep -E "Error|error:|✓|Building" || true
+if [ -f vmmon.ko ]; then
+    echo -e "${GREEN}✓ vmmon built${NC}"
+else
+    echo -e "${RED}✗ vmmon build failed - vmmon.ko not found${NC}"
     exit 1
-}
+fi
 cd ..
 
 # Build vmnet
 echo -e "${BLUE}Step 5: Building vmnet module...${NC}"
 cd vmnet-only
-make LLVM=1 > /dev/null 2>&1 && echo -e "${GREEN}✓ vmnet built${NC}" || {
-    echo -e "${RED}✗ vmnet build failed${NC}"
+make VM_UNAME="$KERNEL_VERSION" LLVM=1 CC=clang LD=ld.lld 2>&1 | grep -E "Error|error:|✓|Building" || true
+if [ -f vmnet.ko ]; then
+    echo -e "${GREEN}✓ vmnet built${NC}"
+else
+    echo -e "${RED}✗ vmnet build failed - vmnet.ko not found${NC}"
     exit 1
-}
+fi
 cd ..
 
 # Install modules
 echo -e "${BLUE}Step 6: Installing VMware modules...${NC}"
-MODULES_DIR="/lib/modules/$KERNEL_VERSION/updates"
+MODULES_DIR="/lib/modules/$KERNEL_VERSION/misc"
 
 if [ ! -d "$MODULES_DIR" ]; then
     echo -e "${YELLOW}Creating $MODULES_DIR${NC}"
     sudo mkdir -p "$MODULES_DIR"
 fi
 
-sudo cp vmmon-only/vmmon.ko "$MODULES_DIR/"
-sudo cp vmnet-only/vmnet.ko "$MODULES_DIR/"
+sudo install -D -m 644 vmmon-only/vmmon.ko "$MODULES_DIR/vmmon.ko"
+sudo install -D -m 644 vmnet-only/vmnet.ko "$MODULES_DIR/vmnet.ko"
 echo -e "${GREEN}✓ Modules installed${NC}"
 
 # Update depmod

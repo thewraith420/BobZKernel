@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
 CONFIG_FILE="/home/bob/buildstuff/BobzKernel/configs/.config-6.18"
-LOCALVERSION="-BobZKernel-6.18"
+LOCALVERSION="-BobZKernel"
 NUM_JOBS="${1:-11}"  # Default to 11 jobs (leaves 1 core free for usability)
 BUILD_LOG="/home/bob/buildstuff/BobzKernel/build.log"
 
@@ -41,7 +41,7 @@ if [ -f "$CONFIG_FILE" ]; then
     cp "$CONFIG_FILE" .config
     echo "Configuration applied from $CONFIG_FILE"
     # Auto-accept defaults for any new/changed config options
-    make LLVM=1 olddefconfig
+    yes "" | make LLVM=1 olddefconfig 2>/dev/null || make LLVM=1 olddefconfig
 else
     echo -e "${RED}Warning: Config file not found, using defconfig${NC}"
     make defconfig
