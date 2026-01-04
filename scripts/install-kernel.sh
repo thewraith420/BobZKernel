@@ -11,7 +11,7 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
+KERNEL_DIR="/home/bob/buildstuff/BobZKernel/builds/linux-6.18"
 LOCALVERSION="-BobZKernel"
 
 echo -e "${BLUE}=== BobZKernel Installation Script ===${NC}"
@@ -52,7 +52,7 @@ depmod -a $KERNEL_VERSION
 
 echo -e "${BLUE}Step 4: Patching DKMS sources for compatibility...${NC}"
 # Patch DKMS sources before building to fix known API incompatibilities
-bash /home/bob/buildstuff/BobzKernel/scripts/patch-dkms-sources.sh
+bash /home/bob/buildstuff/BobZKernel/scripts/patch-dkms-sources.sh
 
 echo -e "${BLUE}Step 5: Building DKMS modules for new kernel...${NC}"
 echo "Building DKMS modules for kernel: $KERNEL_VERSION"
@@ -83,7 +83,7 @@ echo -e "${BLUE}Step 6: Regenerating initramfs...${NC}"
 update-initramfs -c -k $KERNEL_VERSION
 
 echo -e "${BLUE}Step 7: Building VMware modules (if installed)...${NC}"
-bash /home/bob/buildstuff/BobzKernel/scripts/build-vmware-modules.sh "$KERNEL_VERSION" || {
+bash /home/bob/buildstuff/BobZKernel/scripts/build-vmware-modules.sh "$KERNEL_VERSION" || {
     echo -e "${YELLOW}Note: VMware modules not built (VMware may not be installed)${NC}"
 }
 

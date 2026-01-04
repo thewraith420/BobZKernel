@@ -10,11 +10,11 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-KERNEL_DIR="/home/bob/buildstuff/BobzKernel/builds/linux"
-CONFIG_FILE="/home/bob/buildstuff/BobzKernel/configs/.config-6.18"
+KERNEL_DIR="/home/bob/buildstuff/BobZKernel/builds/linux-6.18"
+CONFIG_FILE="/home/bob/buildstuff/BobZKernel/configs/.config-6.18"
 LOCALVERSION="-BobZKernel"
 NUM_JOBS="${1:-11}"  # Default to 11 jobs (leaves 1 core free for usability)
-BUILD_LOG="/home/bob/buildstuff/BobzKernel/build.log"
+BUILD_LOG="/home/bob/buildstuff/BobZKernel/build.log"
 
 echo -e "${BLUE}=== BobZKernel Build Script ===${NC}"
 echo "Building Linux kernel $LOCALVERSION for Lenovo Legion"
@@ -64,7 +64,7 @@ echo "Kernel image: arch/x86/boot/bzImage"
 echo "Build log: $BUILD_LOG"
 echo ""
 echo -e "${BLUE}Next step - Install kernel:${NC}"
-echo "  sudo /home/bob/buildstuff/BobzKernel/scripts/install-kernel.sh"
+echo "  sudo /home/bob/buildstuff/BobZKernel/scripts/install-kernel.sh"
 echo ""
 echo "This will:"
 echo "  - Install kernel and modules"

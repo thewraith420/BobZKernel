@@ -14,17 +14,17 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-BASE_DIR="/home/bob/buildstuff/BobzKernel/builds"
+BASE_DIR="/home/bob/buildstuff/BobZKernel/builds"
 UPSTREAM_URL="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
 
 # Determine which kernel to update
 if [ "$1" == "6.14" ]; then
-    KERNEL_DIR="$BASE_DIR/linux-6.14-cachyos"
+    KERNEL_DIR="$BASE_DIR/linux-6.14"
     BRANCH="linux-6.14.y"
     MAJOR_VERSION="6.14"
     CONFIG_FILE="configs/.config-6.14"
 elif [ "$1" == "6.18" ]; then
-    KERNEL_DIR="$BASE_DIR/linux"
+    KERNEL_DIR="$BASE_DIR/linux-6.18"
     BRANCH="linux-6.18.y"
     MAJOR_VERSION="6.18"
     CONFIG_FILE="configs/.config-6.18"
