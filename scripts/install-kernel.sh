@@ -1,6 +1,7 @@
 #!/bin/bash
 # BobZKernel Installation Script
 # Installs the custom kernel and updates bootloader
+# Usage: sudo ./install-kernel.sh [6.14|6.18]
 
 set -e  # Exit on error
 
@@ -11,11 +12,25 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-KERNEL_DIR="/home/bob/buildstuff/BobZKernel/builds/linux-6.18"
+# Determine kernel version from argument (default to 6.18)
+KERNEL_VERSION_ARG="${1:-6.18}"
+
+if [ "$KERNEL_VERSION_ARG" == "6.14" ]; then
+    KERNEL_DIR="/home/bob/buildstuff/BobZKernel/builds/linux-6.14"
+    KERNEL_MAJOR="6.14"
+elif [ "$KERNEL_VERSION_ARG" == "6.18" ]; then
+    KERNEL_DIR="/home/bob/buildstuff/BobZKernel/builds/linux-6.18"
+    KERNEL_MAJOR="6.18"
+else
+    echo -e "${RED}Error: Invalid kernel version. Use '6.14' or '6.18'${NC}"
+    echo "Usage: sudo $0 [6.14|6.18]"
+    exit 1
+fi
+
 LOCALVERSION="-BobZKernel"
 
 echo -e "${BLUE}=== BobZKernel Installation Script ===${NC}"
-echo "Installing Linux kernel $LOCALVERSION"
+echo "Installing Linux kernel $KERNEL_MAJOR$LOCALVERSION"
 echo ""
 
 # Check if we're running as root
@@ -97,6 +112,6 @@ echo -e "${YELLOW}your current kernel if the new one doesn't work.${NC}"
 echo ""
 echo -e "${BLUE}To boot the new kernel:${NC}"
 echo "  1. Reboot your system"
-echo "  2. At GRUB menu, select 'Linux 6.18.0$LOCALVERSION'"
+echo "  2. At GRUB menu, select 'Linux $KERNEL_MAJOR.*$LOCALVERSION'"
 echo "  3. If it boots successfully, you're good!"
 echo "  4. If it fails, select your old kernel to boot back"
