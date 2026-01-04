@@ -1,0 +1,14 @@
+[Unit]
+Description=ZRAM Compressed Swap Setup
+After=local-fs.target
+Before=swap.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/zram-setup.sh
+RemainAfterExit=yes
+ExecStop=/usr/sbin/swapoff /dev/zram0
+ExecStop=/sbin/modprobe -r zram
+
+[Install]
+WantedBy=swap.target
