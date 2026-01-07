@@ -1,0 +1,37 @@
+# Kernel source (downloaded by scripts, not tracked)
+builds/linux-*/
+
+# Build artifacts
+*.o
+*.ko
+*.ko.zst
+*.mod
+*.a
+vmlinux*
+bzImage
+System.map
+Module.symvers
+*.order
+.tmp_versions/
+
+# Build logs
+build-*.log
+
+# Generated installers (distribute via GitHub Releases)
+*-installer.sh
+installer-*/
+
+# Temporary files
+*.tmp
+*.swp
+*~
+/tmp/
+
+# Editor files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
