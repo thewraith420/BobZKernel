@@ -14,27 +14,37 @@ Custom optimized Linux kernel 6.18.3 with performance patches and multi-architec
 ### Architecture Support
 - **march=native** - CPU-specific optimizations for Intel Raptor Lake (13th Gen)
 - **Generic x86-64-v3** - Universal build compatible with all modern CPUs
-- **Multi-Arch Installer** - Single installer with CPU detection and build selection
+- **Two separate installers** - Choose the right build for your CPU
 
 ## Installation
 
 ### For End Users (Prebuilt Installer)
 
-Download and run the self-extracting installer:
+**Choose the installer for your CPU:**
 
+#### Intel 12th/13th Gen (Recommended for Alder Lake/Raptor Lake)
 ```bash
-# Download from releases
-wget https://github.com/thewraith420/BobZKernel/releases/latest/download/BobZKernel-6.18.3-multi-arch-installer.sh
+# Download march=native installer
+wget https://github.com/thewraith420/BobZKernel/releases/latest/download/BobZKernel-6.18.3-march-native-installer.sh
 
 # Make executable and run
-chmod +x BobZKernel-6.18.3-multi-arch-installer.sh
-sudo ./BobZKernel-6.18.3-multi-arch-installer.sh
+chmod +x BobZKernel-6.18.3-march-native-installer.sh
+sudo ./BobZKernel-6.18.3-march-native-installer.sh
 ```
 
-The installer will:
-- Detect your CPU architecture
-- Present optimized build options (march=native or generic)
+#### All Other CPUs (AMD, Intel 11th Gen and older)
+```bash
+# Download generic installer
+wget https://github.com/thewraith420/BobZKernel/releases/latest/download/BobZKernel-6.18.3-generic-installer.sh
+
+# Make executable and run
+chmod +x BobZKernel-6.18.3-generic-installer.sh
+sudo ./BobZKernel-6.18.3-generic-installer.sh
+```
+
+Both installers will:
 - Install kernel, modules, and update bootloader
+- Automatically rebuild DKMS modules with Clang
 - Preserve your existing kernel for safe fallback
 
 ### For Developers (Build from Source)
