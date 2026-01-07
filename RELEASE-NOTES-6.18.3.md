@@ -162,8 +162,10 @@ Linux kernel is licensed under GPLv2. CachyOS patches maintain their respective 
 ## Credits
 
 - **Linux Kernel** - Linus Torvalds and contributors
-- **CachyOS Team** - Performance patches (BORE, BBRv3, etc.)
+- **CachyOS Team** - Performance patches ([BORE scheduler](https://github.com/CachyOS/linux-cachyos), BBRv3, optimizations)
 - **LLVM Project** - Clang/LLVM compiler infrastructure
+- **LenovoLegionLinux** - [johnfanv2](https://github.com/johnfanv2/LenovoLegionLinux) - Lenovo Legion laptop driver
+- **hid-xpadneo** - [atar-axis](https://github.com/atar-axis/xpadneo) - Advanced Xbox controller driver
 
 ---
 
