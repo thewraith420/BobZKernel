@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-BASE_DIR="/home/bob/buildstuff/BobZKernel"
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KERNEL_VERSION="${1:-6.18}"
 CONTINUE_ON_FAILURE=false
 FORCE=false
