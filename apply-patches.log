@@ -1,0 +1,125 @@
+[0;34m=== CachyOS Patch Application Script ===[0m
+Kernel: 6.18
+Source: /home/bob/buildstuff/BobZKernel/builds/linux-6.18
+Patches: /home/bob/buildstuff/BobZKernel/patches/cachyos-6.18
+Continue on failure: false
+
+[1;33mNo patch configuration found, applying all patches in order[0m
+[0;34mApplying: 0001-amd-pstate.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0001-bore-cachy.patch [optional][0m
+[1;33m⚠ Direct apply failed, trying 3-way merge...[0m
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0001-bore-cachy.patch:160: trailing whitespace.
+	 
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0001-bore-cachy.patch:162: space before tab in indent.
+	 	1000000000/HZ * DIV_ROUNDUP(min_base_slice_ns, 1000000000/HZ)
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0001-bore-cachy.patch:163: trailing whitespace.
+	 
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0001-bore-cachy.patch:166: trailing whitespace.
+	 
+Applied patch to 'include/linux/sched.h' cleanly.
+Falling back to direct application...
+Applied patch to 'init/Kconfig' cleanly.
+Applied patch to 'kernel/Kconfig.hz' cleanly.
+Applied patch to 'kernel/fork.c' cleanly.
+Applied patch to 'kernel/futex/waitwake.c' cleanly.
+Applied patch to 'kernel/sched/Makefile' cleanly.
+Falling back to direct application...
+Applied patch to 'kernel/sched/core.c' cleanly.
+Applied patch to 'kernel/sched/debug.c' cleanly.
+error: repository lacks the necessary blob to perform 3-way merge.
+Falling back to direct application...
+error: patch failed: kernel/sched/fair.c:67
+error: kernel/sched/fair.c: patch does not apply
+Applied patch to 'kernel/sched/features.h' cleanly.
+Applied patch to 'kernel/sched/sched.h' cleanly.
+[0;31m✗ 3-way merge also failed[0m
+[1;33m⊘ Skipping optional patch[0m
+
+[0;34mApplying: 0002-asus.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0003-autofdo.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0004-bbr3.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0005-block.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0006-cachy.patch [optional][0m
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0006-cachy.patch:549: new blank line at EOF.
++
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0006-cachy.patch:8703: new blank line at EOF.
++
+warning: 2 lines add whitespace errors.
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0007-crypto.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0008-fixes.patch [optional][0m
+[1;33m⚠ Direct apply failed, trying 3-way merge...[0m
+Applied patch to 'arch/arm/include/asm/mmu_context.h' cleanly.
+Applied patch to 'arch/riscv/include/asm/sync_core.h' cleanly.
+Applied patch to 'arch/s390/include/asm/mmu_context.h' cleanly.
+Applied patch to 'arch/sparc/include/asm/mmu_context_64.h' cleanly.
+Applied patch to 'arch/x86/include/asm/mmu_context.h' cleanly.
+Applied patch to 'arch/x86/include/asm/sync_core.h' cleanly.
+Applied patch to 'arch/x86/kernel/cpu/amd.c' cleanly.
+Applied patch to 'arch/x86/mm/tlb.c' cleanly.
+Applied patch to 'drivers/android/binder/page_range.rs' cleanly.
+Applied patch to 'drivers/android/binder/thread.rs' cleanly.
+Applied patch to 'drivers/bluetooth/btusb.c' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/amdgpu/amdgpu_device.c' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/amdgpu/gmc_v11_0.c' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/amdkfd/kfd_device_queue_manager.c' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c' cleanly.
+Applied patch to 'drivers/gpu/drm/amd/display/include/ddc_service_types.h' cleanly.
+Applied patch to 'drivers/gpu/drm/i915/gt/intel_rc6.c' cleanly.
+Applied patch to 'drivers/net/wireless/intel/iwlwifi/iwl-drv.c' cleanly.
+Applied patch to 'fs/btrfs/delayed-inode.c' cleanly.
+Applied patch to 'include/linux/perf_event.h' cleanly.
+Applied patch to 'include/linux/sched/mm.h' cleanly.
+Applied patch to 'include/linux/tick.h' cleanly.
+Applied patch to 'include/linux/vtime.h' cleanly.
+Applied patch to 'kernel/sched/core.c' cleanly.
+error: kernel/sched/sched.h: does not match index
+Applied patch to 'net/ipv4/esp4_offload.c' cleanly.
+Applied patch to 'net/ipv6/esp6_offload.c' cleanly.
+Applied patch to 'sound/soc/codecs/cs35l41.c' cleanly.
+[0;31m✗ 3-way merge also failed[0m
+[1;33m⊘ Skipping optional patch[0m
+
+[0;34mApplying: 0009-intel-pstate.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0010-sched-ext.patch [optional][0m
+[0;32m✓ Applied cleanly[0m
+
+[0;34mApplying: 0011-t2.patch [optional][0m
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0011-t2.patch:2424: space before tab in indent.
+ 	    hdev->type != HID_TYPE_SPI_MOUSE)
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0011-t2.patch:2425: space before tab in indent.
+ 		return -ENODEV;
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0011-t2.patch:6767: trailing whitespace.
+	 
+/home/bob/buildstuff/BobZKernel/patches/cachyos-6.18/0011-t2.patch:7981: trailing whitespace.
+    
+warning: 4 lines add whitespace errors.
+[0;32m✓ Applied cleanly[0m
+
+[0;34m=== Patch Application Summary ===[0m
+Successfully applied: 10 patches
+[1;33mSkipped patches: 2[0m
+  [1;33m⊘ 0001-bore-cachy.patch (conflicts)[0m
+  [1;33m⊘ 0008-fixes.patch (conflicts)[0m
+[0;32m✓ Patch application complete![0m
+
+[0;34mNext steps:[0m
+1. Build kernel: ./scripts/build-kernel.sh 6.18
