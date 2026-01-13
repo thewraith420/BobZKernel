@@ -1,0 +1,20 @@
+[0;34mBuild Configuration:[0m
+  Kernel Version: 6.18
+  Build Directory: /home/bob/buildstuff/BobZKernel/builds/linux-6.18
+  Compiler: Clang/LLVM
+  Jobs: 12
+
+[0;34mVerifying optimizations...[0m
+[0;32m✓ march=native enabled (CONFIG_X86_NATIVE_CPU)[0m
+[0;32m✓ Full LTO enabled (CONFIG_LTO_CLANG_FULL)[0m
+[0;32m✓ BORE scheduler enabled (CONFIG_SCHED_BORE)[0m
+
+[0;34mStarting kernel build...[0m
+
+  DESCEND objtool
+  CALL    scripts/checksyscalls.sh
+  INSTALL libsubcmd_headers
+Kernel: arch/x86/boot/bzImage is ready  (#1)
+
+[0;32m✓ Kernel build completed successfully![0m
+[0;34mBuild log saved to: /home/bob/buildstuff/BobZKernel/build-6.18.log[0m
