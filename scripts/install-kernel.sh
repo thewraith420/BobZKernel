@@ -43,10 +43,10 @@ if [ ! -f "arch/x86/boot/bzImage" ]; then
 fi
 
 echo -e "${BLUE}Step 1: Installing kernel...${NC}"
-make LLVM=1 LOCALVERSION=$LOCALVERSION install
+make LLVM=-20 LOCALVERSION=$LOCALVERSION install
 
 echo -e "${BLUE}Step 2: Installing modules...${NC}"
-make LLVM=1 LOCALVERSION=$LOCALVERSION modules_install
+make LLVM=-20 LOCALVERSION=$LOCALVERSION modules_install
 
 KERNEL_VERSION=$(make LOCALVERSION=$LOCALVERSION kernelrelease)
 
@@ -76,7 +76,7 @@ export HOSTCC=clang
 export HOSTCXX=clang++
 export HOSTAR=llvm-ar
 export HOSTLD=ld.lld
-export LLVM=1
+export LLVM=-20
 export LLVM_IAS=1
 
 # Get list of all installed DKMS modules

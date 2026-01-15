@@ -22,6 +22,28 @@ fi
 
 cd "$KERNEL_DIR"
 
+# Check for uncommitted changes
+if [ -n "$(git status --porcelain)" ]; then
+    echo -e "${YELLOW}Warning: Uncommitted changes detected in kernel source.${NC}"
+    echo -e "${YELLOW}These are likely patches from a previous build.${NC}"
+    
+    if [ "${AUTO_YES}" != "true" ]; then
+        read -p "Reset source tree to clean state? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Cannot proceed with dirty tree. Please clean manually or answer 'y'."
+            exit 1
+        fi
+    else
+        echo -e "${BLUE}Auto-cleaning source tree...${NC}"
+    fi
+    
+    # Reset to current HEAD first to clear staged/unstaged changes
+    git reset --hard HEAD
+    git clean -fd
+    echo -e "${GREEN}✓ Source tree cleaned${NC}"
+fi
+
 echo -e "${BLUE}Fetching latest changes from upstream...${NC}"
 git fetch upstream
 
