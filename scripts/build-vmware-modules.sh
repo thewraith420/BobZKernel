@@ -1,93 +1,106 @@
 #!/bin/bash
-# Build VMware modules for new kernel
-# Usage: ./build-vmware-modules.sh KERNEL_VERSION
-#
-# This script builds VMware vmmon and vmnet modules for kernels compiled with Clang.
-# It applies necessary prototype fixes for modern kernel compatibility.
+# Build VMware modules (vmmon, vmnet) with Clang for kernel compatibility
+# Automatically patches function prototypes that fail with strict-prototypes
 
 set -e
 
-KERNEL_VERSION="$1"
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KERNEL_DIR="$BASE_DIR/builds/linux-6.18"
-WORK_DIR="/tmp/vmware-modules-$$"
-
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
+KERNEL_VERSION="${1:-}"
+
 if [ -z "$KERNEL_VERSION" ]; then
-    # Auto-detect from running kernel if not specified
-    KERNEL_VERSION=$(uname -r)
+    echo -e "${RED}Error: kernel version required${NC}"
+    echo "Usage: $0 <kernel_version>"
+    exit 1
 fi
 
-# Check if VMware is installed
-if [ ! -d "/usr/lib/vmware" ]; then
-    echo "VMware not installed, skipping"
-    exit 0
-fi
+echo -e "${BLUE}=== Building VMware Modules for $KERNEL_VERSION ===${NC}"
+echo ""
 
+# Check if VMware modules are installed
 if [ ! -f "/usr/lib/vmware/modules/source/vmmon.tar" ]; then
-    echo "VMware module sources not found, skipping"
+    echo -e "${YELLOW}VMware modules not found. Skipping.${NC}"
     exit 0
 fi
 
-echo -e "${GREEN}Building VMware modules for kernel $KERNEL_VERSION...${NC}"
-
-# Create work directory
+WORK_DIR="/tmp/vmware-build-$$"
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 
-# Extract module sources
-echo "Extracting vmmon and vmnet sources..."
-tar xf /usr/lib/vmware/modules/source/vmmon.tar
-tar xf /usr/lib/vmware/modules/source/vmnet.tar
+echo -e "${BLUE}Step 1: Extracting VMware source archives...${NC}"
+tar -xf /usr/lib/vmware/modules/source/vmmon.tar
+tar -xf /usr/lib/vmware/modules/source/vmnet.tar
+echo -e "${GREEN}✓ Extracted${NC}"
 
-# Apply prototype fixes for modern kernels (C23 compatibility)
-echo "Applying prototype fixes..."
+# Patch vmmon - VNetFreeInterfaceList prototype
+echo -e "${BLUE}Step 2: Patching vmmon prototypes...${NC}"
+if [ -f "vmmon-only/driver.c" ]; then
+    sed -i 's/VNetFreeInterfaceList()$/VNetFreeInterfaceList(void)/' vmmon-only/driver.c
+    echo -e "${GREEN}✓ vmmon patched${NC}"
+fi
 
-# Fix vmnet driver.c - VNetFreeInterfaceList needs void parameter
-sed -i 's/VNetFreeInterfaceList()$/VNetFreeInterfaceList(void)/' vmnet-only/driver.c
+# Patch vmnet - function prototypes
+echo -e "${BLUE}Step 3: Patching vmnet prototypes...${NC}"
+if [ -f "vmnet-only/driver.c" ]; then
+    sed -i 's/VNetFreeInterfaceList()$/VNetFreeInterfaceList(void)/' vmnet-only/driver.c
+    echo -e "${GREEN}✓ vmnet driver.c patched${NC}"
+fi
 
-# Fix vmnet smac_compat.c - SMACL_GetUptime needs void parameter
-sed -i 's/SMACL_GetUptime()$/SMACL_GetUptime(void)/' vmnet-only/smac_compat.c
+if [ -f "vmnet-only/smac_compat.c" ]; then
+    sed -i 's/SMACL_GetUptime()$/SMACL_GetUptime(void)/' vmnet-only/smac_compat.c
+    echo -e "${GREEN}✓ vmnet smac_compat.c patched${NC}"
+fi
 
-# Build vmmon with clang (required for clang-built kernels)
-echo -e "${YELLOW}Building vmmon...${NC}"
-cd "$WORK_DIR/vmmon-only"
-make CC=clang LD=ld.lld VM_UNAME="$KERNEL_VERSION" || {
-    echo -e "${RED}vmmon build failed${NC}"
-    rm -rf "$WORK_DIR"
+# Build vmmon
+echo -e "${BLUE}Step 4: Building vmmon module...${NC}"
+cd vmmon-only
+make LLVM=1 > /dev/null 2>&1 && echo -e "${GREEN}✓ vmmon built${NC}" || {
+    echo -e "${RED}✗ vmmon build failed${NC}"
     exit 1
 }
+cd ..
 
-# Build vmnet with clang
-echo -e "${YELLOW}Building vmnet...${NC}"
-cd "$WORK_DIR/vmnet-only"
-make CC=clang LD=ld.lld VM_UNAME="$KERNEL_VERSION" || {
-    echo -e "${RED}vmnet build failed${NC}"
-    rm -rf "$WORK_DIR"
+# Build vmnet
+echo -e "${BLUE}Step 5: Building vmnet module...${NC}"
+cd vmnet-only
+make LLVM=1 > /dev/null 2>&1 && echo -e "${GREEN}✓ vmnet built${NC}" || {
+    echo -e "${RED}✗ vmnet build failed${NC}"
     exit 1
 }
+cd ..
 
 # Install modules
-echo "Installing modules to /lib/modules/$KERNEL_VERSION/misc/..."
-mkdir -p "/lib/modules/$KERNEL_VERSION/misc"
-cp "$WORK_DIR/vmmon-only/vmmon.ko" "/lib/modules/$KERNEL_VERSION/misc/"
-cp "$WORK_DIR/vmnet-only/vmnet.ko" "/lib/modules/$KERNEL_VERSION/misc/"
+echo -e "${BLUE}Step 6: Installing VMware modules...${NC}"
+MODULES_DIR="/lib/modules/$KERNEL_VERSION/updates"
 
-# Update module dependencies
-depmod -a "$KERNEL_VERSION"
+if [ ! -d "$MODULES_DIR" ]; then
+    echo -e "${YELLOW}Creating $MODULES_DIR${NC}"
+    sudo mkdir -p "$MODULES_DIR"
+fi
+
+sudo cp vmmon-only/vmmon.ko "$MODULES_DIR/"
+sudo cp vmnet-only/vmnet.ko "$MODULES_DIR/"
+echo -e "${GREEN}✓ Modules installed${NC}"
+
+# Update depmod
+echo -e "${BLUE}Step 7: Updating module dependencies...${NC}"
+sudo depmod -a "$KERNEL_VERSION"
+echo -e "${GREEN}✓ depmod updated${NC}"
 
 # Cleanup
+echo -e "${BLUE}Step 8: Cleaning up build directory...${NC}"
+cd /
 rm -rf "$WORK_DIR"
 
-echo -e "${GREEN}VMware modules built and installed successfully${NC}"
-
-# Try to load modules if we're running the target kernel
-if [ "$(uname -r)" = "$KERNEL_VERSION" ]; then
-    echo "Loading modules..."
-    modprobe vmmon 2>/dev/null || true
-    modprobe vmnet 2>/dev/null || true
-fi
+echo -e "${GREEN}=== VMware Module Build Complete ===${NC}"
+echo ""
+echo "To load modules:"
+echo "  sudo modprobe vmmon"
+echo "  sudo modprobe vmnet"
+echo ""
+echo "To start VMware networking:"
+echo "  sudo /usr/bin/vmware-networks --start"

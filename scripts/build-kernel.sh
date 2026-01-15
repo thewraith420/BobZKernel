@@ -67,7 +67,7 @@ echo -e "${BLUE}Starting kernel build...${NC}"
 echo ""
 
 # Build kernel with LLVM and custom localversion
-make LLVM=1 LOCALVERSION=-BobZKernel -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
+make LLVM=-20 LOCALVERSION=-BobZKernel -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
 
 echo ""
 echo -e "${GREEN}✓ Kernel build completed successfully!${NC}"

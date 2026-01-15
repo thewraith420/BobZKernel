@@ -105,7 +105,7 @@ cp "$BASE_DIR/configs/.config-$KERNEL_VERSION" .config
 echo -e "${BLUE}Config applied from configs/.config-$KERNEL_VERSION${NC}"
 
 # Update config for new options
-yes "" | make LLVM=1 olddefconfig 2>/dev/null || make LLVM=1 olddefconfig
+yes "" | make LLVM=-20 olddefconfig 2>/dev/null || make LLVM=-20 olddefconfig
 
 # Save updated config back
 cp .config "$BASE_DIR/configs/.config-$KERNEL_VERSION.$(date +%Y%m%d)"
