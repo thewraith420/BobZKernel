@@ -18,9 +18,14 @@ KERNEL_DIR="$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
 # Auto-detect branch and select appropriate config
 BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
+EXTRA_CFLAGS=""
 if [ "$BRANCH" = "generic-build" ]; then
     CONFIG_FILE="$BASE_DIR/configs/config-6.18.3-generic"
     echo -e "${BLUE}Branch: generic-build - using generic (x86-64) config${NC}"
+elif [ "$BRANCH" = "workpc" ]; then
+    CONFIG_FILE="$BASE_DIR/configs/config-6.18.3-workpc"
+    EXTRA_CFLAGS="-march=bdver2 -mtune=bdver2"
+    echo -e "${BLUE}Branch: workpc - using Piledriver (bdver2) optimized config${NC}"
 else
     CONFIG_FILE="$BASE_DIR/configs/config-6.18.3-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
@@ -76,8 +81,13 @@ echo ""
 echo -e "${BLUE}Starting kernel build...${NC}"
 echo ""
 
-# Build kernel with LLVM and custom localversion
-make LLVM=-20 LOCALVERSION=-BobZKernel -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
+# Build kernel with LLVM (LOCALVERSION is set in config)
+if [ -n "$EXTRA_CFLAGS" ]; then
+    echo -e "${BLUE}Using extra CFLAGS: $EXTRA_CFLAGS${NC}"
+    make LLVM=-20 KCFLAGS="$EXTRA_CFLAGS" -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
+else
+    make LLVM=-20 -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
+fi
 
 echo ""
 echo -e "${GREEN}✓ Kernel build completed successfully!${NC}"
