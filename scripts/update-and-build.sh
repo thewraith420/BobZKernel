@@ -3,6 +3,7 @@
 # Usage: ./update-and-build.sh [--skip-update] [--skip-install] [--yes]
 
 set -e
+set -o pipefail
 
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
@@ -100,9 +101,19 @@ echo ""
 echo -e "${BLUE}═══ Step 5/7: Building Kernel ═══${NC}"
 cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
+# Auto-detect branch and select appropriate config
+BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
+if [ "$BRANCH" = "generic-build" ]; then
+    CONFIG_SRC="$BASE_DIR/configs/config-6.18.3-generic"
+    echo -e "${BLUE}Branch: generic-build - using generic (x86-64) config${NC}"
+else
+    CONFIG_SRC="$BASE_DIR/configs/config-6.18.3-march-native"
+    echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
+fi
+
 # Copy config
-cp "$BASE_DIR/configs/.config-$KERNEL_VERSION" .config
-echo -e "${BLUE}Config applied from configs/.config-$KERNEL_VERSION${NC}"
+cp "$CONFIG_SRC" .config
+echo -e "${BLUE}Config applied from $CONFIG_SRC${NC}"
 
 # Update config for new options
 yes "" | make LLVM=-20 olddefconfig 2>/dev/null || make LLVM=-20 olddefconfig
