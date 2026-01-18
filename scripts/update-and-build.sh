@@ -3,6 +3,7 @@
 # Usage: ./update-and-build.sh [--skip-update] [--skip-install] [--yes]
 
 set -e
+set -o pipefail
 
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
