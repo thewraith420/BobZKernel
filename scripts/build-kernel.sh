@@ -21,6 +21,9 @@ BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
 if [ "$BRANCH" = "generic-build" ]; then
     CONFIG_FILE="$BASE_DIR/configs/config-6.18.3-generic"
     echo -e "${BLUE}Branch: generic-build - using generic (x86-64) config${NC}"
+elif [ "$BRANCH" = "pixel-slate" ]; then
+    CONFIG_FILE="$BASE_DIR/configs/config-6.18.6-pixel-slate"
+    echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate (camera + audio optimized) config${NC}"
 else
     CONFIG_FILE="$BASE_DIR/configs/config-6.18.3-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
