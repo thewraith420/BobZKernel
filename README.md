@@ -1,6 +1,6 @@
-# BobZKernel - Optimized Linux 6.18.3
+# BobZKernel - Optimized Linux 6.18.6
 
-Custom optimized Linux kernel 6.18.3 with performance patches and multi-architecture support.
+Custom optimized Linux kernel 6.18.6 with performance patches and multi-architecture support.
 
 ## Features
 
@@ -22,30 +22,34 @@ Custom optimized Linux kernel 6.18.3 with performance patches and multi-architec
 
 **Choose the installer for your CPU:**
 
-#### Intel 12th/13th Gen (Recommended for Alder Lake/Raptor Lake)
+#### Intel 12th/13th Gen (march=native)
 ```bash
-# Download march=native installer
-wget https://github.com/thewraith420/BobZKernel/releases/latest/download/BobZKernel-6.18.3-march-native-installer.sh
+# Download march=native package
+wget https://github.com/thewraith420/BobZKernel/releases/download/v6.18.6-master/BobZKernel-6.18.6-march-native.tar.gz
 
-# Make executable and run
-chmod +x BobZKernel-6.18.3-march-native-installer.sh
-sudo ./BobZKernel-6.18.3-march-native-installer.sh
+# Extract and install
+tar -xzf BobZKernel-6.18.6-march-native.tar.gz
+sudo cp vmlinuz-6.18.6-BobZKernel /boot/
+sudo cp config-6.18.6-BobZKernel /boot/
+sudo update-grub
 ```
 
-#### All Other CPUs (AMD, Intel 11th Gen and older)
+#### All Other CPUs (AMD, Intel 11th Gen and older, Generic x86-64)
 ```bash
-# Download generic installer
-wget https://github.com/thewraith420/BobZKernel/releases/latest/download/BobZKernel-6.18.3-generic-installer.sh
+# Download generic package with AMD GPU support
+wget https://github.com/thewraith420/BobZKernel/releases/download/v6.18.6-generic/BobZKernel-6.18.6-generic-x86-64.tar.gz
 
-# Make executable and run
-chmod +x BobZKernel-6.18.3-generic-installer.sh
-sudo ./BobZKernel-6.18.3-generic-installer.sh
+# Extract and install
+tar -xzf BobZKernel-6.18.6-generic-x86-64.tar.gz
+sudo cp vmlinuz-6.18.6-BobZKernel-generic /boot/
+sudo cp config-6.18.6-BobZKernel-generic /boot/
+sudo update-grub
 ```
 
-Both installers will:
-- Install kernel, modules, and update bootloader
-- Automatically rebuild DKMS modules with Clang
-- Preserve your existing kernel for safe fallback
+Installation includes:
+- Kernel image and configuration file
+- Manual bootloader update with `sudo update-grub`
+- Preserves your existing kernel for safe fallback
 
 ### For Developers (Build from Source)
 
@@ -85,15 +89,16 @@ sudo ./scripts/install-kernel.sh
 
 ## System Requirements
 
-- **Kernel:** Linux 6.18.3
+- **Kernel:** Linux 6.18.6
 - **Compiler:** Clang 20.1.2 with LLVM
 - **Target CPUs:**
   - Intel 12th/13th Gen (Alder Lake/Raptor Lake) - march=native build
-  - Any modern x86-64-v3 CPU - generic build
-- **DKMS Modules:** Automatically rebuilt with Clang
-  - NVIDIA 580.95.05
-  - LenovoLegionLinux 1.0.0
-  - hid-xpadneo v0.9
+  - Any modern x86-64-v3 CPU - generic build (2015+)
+- **GPU Support:**
+  - NVIDIA (via external driver)
+  - AMD Radeon (radeon module)
+  - AMD AMDGPU (amdgpu module)
+  - Intel integrated graphics
 
 ## Directory Structure
 
@@ -124,12 +129,13 @@ BobZKernel/
 ### march=native (Intel Raptor Lake 13th Gen)
 - Optimized for Intel Core i5-13420H and similar CPUs
 - Maximum performance on target hardware
-- **Version:** 6.18.3-BobZKernel
+- **Version:** 6.18.6-BobZKernel
 
 ### Generic x86-64-v3
 - Compatible with all modern x86-64 CPUs (2015+)
 - Portable across different Intel/AMD systems
-- **Version:** 6.18.3-BobZKernel-generic
+- AMD GPU driver support (radeon + amdgpu)
+- **Version:** 6.18.6-BobZKernel-generic
 
 ## Verification
 
