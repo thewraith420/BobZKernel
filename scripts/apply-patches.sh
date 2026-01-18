@@ -176,6 +176,27 @@ fi
 
 echo -e "${GREEN}✓ Patch application complete!${NC}"
 echo ""
+
+# Fix known BORE/CachyOS conflict in kernel/sched/fair.c
+FAIR_C="$KERNEL_DIR/kernel/sched/fair.c"
+if grep -q "<<<<<<" "$FAIR_C" 2>/dev/null; then
+    echo -e "${YELLOW}Fixing known BORE patch conflict in fair.c...${NC}"
+    # Remove conflict markers and keep BORE version
+    sed -i '/^<<<<<<< ours$/,/^>>>>>>> theirs$/c\
+#ifdef CONFIG_SCHED_BORE\
+static const unsigned int nsecs_per_tick = 1000000000ULL / HZ;\
+unsigned int sysctl_sched_min_base_slice = CONFIG_MIN_BASE_SLICE_NS;\
+__read_mostly uint sysctl_sched_base_slice = nsecs_per_tick;\
+#else /* !CONFIG_SCHED_BORE */\
+unsigned int sysctl_sched_base_slice = 700000ULL;\
+static unsigned int normalized_sysctl_sched_base_slice = 700000ULL;\
+#endif /* CONFIG_SCHED_BORE */\
+\
+__read_mostly unsigned int sysctl_sched_migration_cost = 500000UL;' "$FAIR_C"
+    echo -e "${GREEN}✓ BORE conflict auto-resolved${NC}"
+fi
+
+echo ""
 echo -e "${BLUE}Next steps:${NC}"
 echo "1. Build kernel: ./scripts/build-kernel.sh $KERNEL_VERSION"
 
