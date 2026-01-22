@@ -69,12 +69,6 @@ else
     echo -e "${YELLOW}⚠ Full LTO not found in config${NC}"
 fi
 
-if grep -q "CONFIG_SCHED_BORE=y" .config; then
-    echo -e "${GREEN}✓ BORE scheduler enabled (CONFIG_SCHED_BORE)${NC}"
-else
-    echo -e "${YELLOW}⚠ BORE scheduler not found in config${NC}"
-fi
-
 echo ""
 echo -e "${BLUE}Starting kernel build...${NC}"
 echo ""

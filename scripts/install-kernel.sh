@@ -113,6 +113,13 @@ bash /home/bob/buildstuff/BobZKernel/scripts/build-vmware-modules.sh "$KERNEL_VE
 echo -e "${BLUE}Step 8: Updating bootloader...${NC}"
 update-grub
 
+echo -e "${BLUE}Step 9: Verifying BORE scheduler in kernel image...${NC}"
+if strings "$KERNEL_DIR/arch/x86/boot/bzImage" | grep -q "sched_bore"; then
+    echo -e "${GREEN}✓ BORE scheduler symbols found in kernel image${NC}"
+else
+    echo -e "${YELLOW}⚠ BORE scheduler symbols not found in kernel image${NC}"
+fi
+
 echo -e "${GREEN}=== Installation Complete! ===${NC}"
 echo ""
 echo -e "${YELLOW}IMPORTANT: Before rebooting, ensure you have a way to boot${NC}"
