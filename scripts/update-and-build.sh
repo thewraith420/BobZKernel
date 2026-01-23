@@ -101,9 +101,30 @@ echo ""
 echo -e "${BLUE}═══ Step 5/7: Building Kernel ═══${NC}"
 cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
+# Auto-detect branch and select appropriate config
+BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
+if [ "$BRANCH" = "generic-build" ]; then
+    CONFIG_SRC="$BASE_DIR/configs/config-6.18.3-generic"
+    echo -e "${BLUE}Branch: generic-build - using generic (x86-64) config${NC}"
+elif [ "$BRANCH" = "pixel-slate" ]; then
+    CONFIG_SRC="$BASE_DIR/configs/config-6.18.6-pixel-slate"
+    echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate (camera + audio optimized) config${NC}"
+else
+    CONFIG_SRC="$BASE_DIR/configs/config-6.18.3-march-native"
+    echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
+fi
+
+# Try to find the config file - first try version-specific, then fallback to generic
+if [ ! -f "$CONFIG_SRC" ]; then
+    # If specific config doesn't exist, try the base config for this branch
+    if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "generic-build" ]; then
+        CONFIG_SRC="$BASE_DIR/configs/.config-$KERNEL_VERSION"
+    fi
+fi
+
 # Copy config
-cp "$BASE_DIR/configs/.config-$KERNEL_VERSION" .config
-echo -e "${BLUE}Config applied from configs/.config-$KERNEL_VERSION${NC}"
+cp "$CONFIG_SRC" .config
+echo -e "${BLUE}Config applied from $CONFIG_SRC${NC}"
 
 # Update config for new options
 yes "" | make LLVM=-20 olddefconfig 2>/dev/null || make LLVM=-20 olddefconfig
