@@ -44,13 +44,16 @@ if [ ! -f "arch/x86/boot/bzImage" ]; then
     exit 1
 fi
 
+# Get the actual kernel version FIRST, before installing
+KERNEL_VERSION=$(make kernelrelease)
+echo -e "${BLUE}Detected kernel version: ${GREEN}$KERNEL_VERSION${NC}"
+echo ""
+
 echo -e "${BLUE}Step 1: Installing kernel...${NC}"
-make LLVM=-20 install
+make LLVM=-20 KERNELRELEASE=$KERNEL_VERSION install
 
 echo -e "${BLUE}Step 2: Installing modules...${NC}"
-make LLVM=-20 modules_install
-
-KERNEL_VERSION=$(make kernelrelease)
+make LLVM=-20 KERNELRELEASE=$KERNEL_VERSION modules_install
 
 echo -e "${BLUE}Step 3: Compressing modules with zstd...${NC}"
 find /lib/modules/$KERNEL_VERSION -name '*.ko' -exec zstd --rm -q -T0 {} \;
