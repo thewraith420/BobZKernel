@@ -196,6 +196,7 @@ __read_mostly unsigned int sysctl_sched_migration_cost = 500000UL;' "$FAIR_C"
     echo -e "${GREEN}✓ BORE conflict auto-resolved${NC}"
 fi
 
+
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
 echo "1. Build kernel: ./scripts/build-kernel.sh $KERNEL_VERSION"
