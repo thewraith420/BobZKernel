@@ -16,7 +16,9 @@ NC='\033[0m' # No Color
 KERNEL_DIR="/home/bob/buildstuff/BobZKernel/builds/linux-6.18"
 KERNEL_MAJOR="6.18"
 
-LOCALVERSION="-BobZKernel"
+# Auto-detect LOCALVERSION from kernel config or use empty (config will define it)
+# This prevents the install script from overriding CONFIG_LOCALVERSION from .config
+LOCALVERSION=""
 
 echo -e "${BLUE}=== BobZKernel Installation Script ===${NC}"
 echo "Installing Linux kernel $KERNEL_MAJOR$LOCALVERSION"
@@ -43,12 +45,12 @@ if [ ! -f "arch/x86/boot/bzImage" ]; then
 fi
 
 echo -e "${BLUE}Step 1: Installing kernel...${NC}"
-make LLVM=-20 LOCALVERSION=$LOCALVERSION install
+make LLVM=-20 install
 
 echo -e "${BLUE}Step 2: Installing modules...${NC}"
-make LLVM=-20 LOCALVERSION=$LOCALVERSION modules_install
+make LLVM=-20 modules_install
 
-KERNEL_VERSION=$(make LOCALVERSION=$LOCALVERSION kernelrelease)
+KERNEL_VERSION=$(make kernelrelease)
 
 echo -e "${BLUE}Step 3: Compressing modules with zstd...${NC}"
 find /lib/modules/$KERNEL_VERSION -name '*.ko' -exec zstd --rm -q -T0 {} \;
