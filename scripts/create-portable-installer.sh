@@ -21,10 +21,13 @@ BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
 cd "$KERNEL_DIR"
 KERNELRELEASE=$(make -s kernelrelease 2>/dev/null || echo "6.18.3-BobZKernel")
 
-# Detect optimizations from config
+# Detect optimizations from config and branch
 if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
     MARCH_OPTIMIZATION="march=native (CPU-specific optimization)"
     ARCH_NOTE="Optimized for this CPU architecture"
+elif [ "$BRANCH" = "pixel-slate" ]; then
+    MARCH_OPTIMIZATION="march=skylake (Intel Skylake/Kaby Lake architecture)"
+    ARCH_NOTE="Optimized for Intel Skylake/Kaby Lake (Pixel Slate: Core i5-8200Y)"
 else
     MARCH_OPTIMIZATION="generic x86-64 (compatible with most x86-64 CPUs)"
     ARCH_NOTE="Compatible with most x86-64 processors"

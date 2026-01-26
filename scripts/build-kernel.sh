@@ -58,15 +58,17 @@ echo ""
 # Verify critical optimizations are enabled based on branch
 echo -e "${BLUE}Verifying optimizations...${NC}"
 
-# Check march=native only for march-native and master branches
+# Check march settings per branch
 if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ]; then
     if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
         echo -e "${GREEN}✓ march=native enabled (CONFIG_X86_NATIVE_CPU)${NC}"
     else
         echo -e "${YELLOW}⚠ march=native not found in config${NC}"
     fi
+elif [ "$BRANCH" = "pixel-slate" ]; then
+    echo -e "${GREEN}✓ march=skylake optimizations will be applied (Pixel Slate - Kaby Lake)${NC}"
 else
-    echo -e "${YELLOW}⚠ march=native optimization not used on $BRANCH branch${NC}"
+    echo -e "${YELLOW}⚠ Using generic x86-64 optimizations on $BRANCH branch${NC}"
 fi
 
 # Check LTO status
@@ -81,6 +83,13 @@ fi
 echo ""
 echo -e "${BLUE}Starting kernel build...${NC}"
 echo ""
+
+# Set architecture-specific optimizations for pixel-slate branch
+if [ "$BRANCH" = "pixel-slate" ]; then
+    echo -e "${BLUE}Applying Skylake (Kaby Lake) optimizations for Pixel Slate...${NC}"
+    KCFLAGS="-march=skylake -mtune=skylake"
+    export KCFLAGS
+fi
 
 # Build kernel with LLVM (don't override LOCALVERSION - let config file define it)
 make LLVM=-20 -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
