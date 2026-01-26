@@ -135,29 +135,56 @@ cd "$BASE_DIR"
 echo -e "${GREEN}✓ Kernel built successfully${NC}"
 echo ""
 
-# Step 6: Install (optional)
+# Step 6: Install or Package (optional)
 if [ "$SKIP_INSTALL" = false ]; then
-    echo -e "${BLUE}═══ Step 6/7: Installing Kernel ═══${NC}"
+    echo -e "${BLUE}═══ Step 6/7: Kernel Deployment ═══${NC}"
 
     if [ "$AUTO_YES" = false ]; then
-        echo -e "${YELLOW}This will install the kernel and may require a reboot${NC}"
-        read -p "Proceed with installation? (y/N) " -n 1 -r
+        echo -e "${YELLOW}Choose deployment option:${NC}"
+        echo "  1) Install kernel on this system (LOQ)"
+        echo "  2) Create portable installer package"
+        echo "  3) Skip (do nothing)"
+        echo ""
+        read -p "Select option [1-3]: " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}Skipping installation${NC}"
-            SKIP_INSTALL=true
-        fi
-    fi
 
-    if [ "$SKIP_INSTALL" = false ]; then
+        case $REPLY in
+            1)
+                echo -e "${BLUE}Installing kernel on this system...${NC}"
+                sudo ./scripts/install-kernel.sh "$KERNEL_VERSION" || {
+                    echo -e "${RED}Kernel installation failed!${NC}"
+                    exit 1
+                }
+                echo -e "${GREEN}✓ Kernel installed on this system${NC}"
+                INSTALL_TYPE="local"
+                ;;
+            2)
+                echo -e "${BLUE}Creating portable installer package...${NC}"
+                ./scripts/create-portable-installer.sh || {
+                    echo -e "${RED}Portable installer creation failed!${NC}"
+                    exit 1
+                }
+                echo -e "${GREEN}✓ Portable installer created${NC}"
+                INSTALL_TYPE="portable"
+                ;;
+            3|*)
+                echo -e "${YELLOW}Skipping deployment${NC}"
+                SKIP_INSTALL=true
+                INSTALL_TYPE="skipped"
+                ;;
+        esac
+    else
+        # AUTO_YES is true, install locally by default
         sudo ./scripts/install-kernel.sh "$KERNEL_VERSION" || {
             echo -e "${RED}Kernel installation failed!${NC}"
             exit 1
         }
         echo -e "${GREEN}✓ Kernel installed${NC}"
+        INSTALL_TYPE="local"
     fi
 else
-    echo -e "${YELLOW}⊘ Skipping kernel installation${NC}"
+    echo -e "${YELLOW}⊘ Skipping kernel deployment${NC}"
+    INSTALL_TYPE="skipped"
 fi
 
 echo ""
@@ -166,15 +193,31 @@ echo -e "${GREEN}║              Workflow Complete!                         ║
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-if [ "$SKIP_INSTALL" = false ]; then
-    echo -e "${BLUE}Next steps:${NC}"
-    echo "1. Reboot your system"
-    echo "2. Select '6.$KERNEL_VERSION.*-BobZKernel' from GRUB menu"
-    echo "3. Verify with: uname -r"
-else
-    echo -e "${BLUE}To install manually:${NC}"
-    echo "  sudo ./scripts/install-kernel.sh $KERNEL_VERSION"
-fi
+# Show appropriate next steps based on deployment choice
+case "${INSTALL_TYPE:-skipped}" in
+    local)
+        echo -e "${BLUE}Next steps:${NC}"
+        echo "1. Reboot your system"
+        echo "2. Select '6.$KERNEL_VERSION.*-BobZKernel' from GRUB menu"
+        echo "3. Verify with: uname -r"
+        ;;
+    portable)
+        KERNELRELEASE=$(make -C builds/linux-$KERNEL_VERSION -s kernelrelease 2>/dev/null)
+        PACKAGE_NAME="BobZKernel-${KERNELRELEASE}-installer.tar.gz"
+        echo -e "${BLUE}Portable installer created:${NC}"
+        echo "  Package: $PACKAGE_NAME"
+        echo ""
+        echo -e "${BLUE}To deploy on target system:${NC}"
+        echo "1. Copy $PACKAGE_NAME to target system"
+        echo "2. Extract: tar -xzf $PACKAGE_NAME"
+        echo "3. Install: cd installer-* && sudo ./install.sh"
+        ;;
+    skipped)
+        echo -e "${BLUE}Deployment options:${NC}"
+        echo "  Local install:      sudo ./scripts/install-kernel.sh $KERNEL_VERSION"
+        echo "  Portable installer: ./scripts/create-portable-installer.sh"
+        ;;
+esac
 
 echo ""
 echo -e "${BLUE}Kernel build artifacts:${NC}"
