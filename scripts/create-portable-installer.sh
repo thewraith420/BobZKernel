@@ -38,6 +38,12 @@ else
     LTO_STATUS="LTO status unknown"
 fi
 
+if grep -q "CONFIG_SCHED_BORE=y" .config; then
+    BORE_STATUS="BORE Scheduler (Burst-Oriented Response Enhancer)"
+else
+    BORE_STATUS="Standard Linux Scheduler"
+fi
+
 INSTALLER_DIR="$BASE_DIR/installer-$KERNELRELEASE"
 PACKAGE_NAME="BobZKernel-${KERNELRELEASE}-installer.tar.gz"
 
@@ -72,7 +78,7 @@ Kernel: $KERNELRELEASE
 Branch: $BRANCH
 Built: $(date)
 Optimizations:
-- BORE Scheduler (Burst-Oriented Response Enhancer)
+- $BORE_STATUS
 - BBRv3 TCP Congestion Control
 - $MARCH_OPTIMIZATION
 - $LTO_STATUS
@@ -344,7 +350,7 @@ This is a portable kernel installer package that can be used to install the BobZ
 
 ## Features
 
-- **BORE Scheduler**: Burst-Oriented Response Enhancer for improved responsiveness
+- **$BORE_STATUS**
 - **BBRv3**: Latest TCP congestion control algorithm
 - **$MARCH_OPTIMIZATION**
 - **$LTO_STATUS**
