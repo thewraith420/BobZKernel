@@ -55,18 +55,27 @@ echo "  Compiler: Clang/LLVM"
 echo "  Jobs: $(nproc)"
 echo ""
 
-# Verify critical optimizations are enabled
+# Verify critical optimizations are enabled based on branch
 echo -e "${BLUE}Verifying optimizations...${NC}"
-if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
-    echo -e "${GREEN}✓ march=native enabled (CONFIG_X86_NATIVE_CPU)${NC}"
+
+# Check march=native only for march-native and master branches
+if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ]; then
+    if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
+        echo -e "${GREEN}✓ march=native enabled (CONFIG_X86_NATIVE_CPU)${NC}"
+    else
+        echo -e "${YELLOW}⚠ march=native not found in config${NC}"
+    fi
 else
-    echo -e "${YELLOW}⚠ march=native not found in config${NC}"
+    echo -e "${YELLOW}⚠ march=native optimization not used on $BRANCH branch${NC}"
 fi
 
+# Check LTO status
 if grep -q "CONFIG_LTO_CLANG_FULL=y" .config; then
     echo -e "${GREEN}✓ Full LTO enabled (CONFIG_LTO_CLANG_FULL)${NC}"
+elif grep -q "CONFIG_LTO_NONE=y" .config; then
+    echo -e "${YELLOW}⚠ LTO disabled (CONFIG_LTO_NONE)${NC}"
 else
-    echo -e "${YELLOW}⚠ Full LTO not found in config${NC}"
+    echo -e "${YELLOW}⚠ LTO status unknown${NC}"
 fi
 
 echo ""
