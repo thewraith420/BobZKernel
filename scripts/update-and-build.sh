@@ -141,7 +141,7 @@ if [ "$SKIP_INSTALL" = false ]; then
 
     if [ "$AUTO_YES" = false ]; then
         echo -e "${YELLOW}Choose deployment option:${NC}"
-        echo "  1) Install kernel on this system (LOQ)"
+        echo "  1) Install kernel on this system"
         echo "  2) Create portable installer package"
         echo "  3) Skip (do nothing)"
         echo ""
