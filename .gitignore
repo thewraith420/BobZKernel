@@ -35,3 +35,19 @@ installer-*/
 # OS files
 .DS_Store
 Thumbs.db
+*-installer.tar.gz
+
+# Installer tarballs (too large for git)
+*.tar.gz
+releases/*.tar.gz
+
+# Build artifacts
+boot/
+lib/modules/
+VERSION
+install.sh
+uninstall.sh
+installer-*/
+
+# Install logs
+install-*.log

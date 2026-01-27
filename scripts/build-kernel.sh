@@ -15,7 +15,19 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KERNEL_VERSION="6.18"
 
 KERNEL_DIR="$BASE_DIR/builds/linux-$KERNEL_VERSION"
-CONFIG_FILE="$BASE_DIR/config-$KERNEL_VERSION"
+
+# Auto-detect branch and select appropriate config
+BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
+if [ "$BRANCH" = "generic-build" ]; then
+    CONFIG_FILE="$BASE_DIR/configs/config-6.18.3-generic"
+    echo -e "${BLUE}Branch: generic-build - using generic (x86-64) config${NC}"
+elif [ "$BRANCH" = "pixel-slate" ]; then
+    CONFIG_FILE="$BASE_DIR/configs/config-6.18.6-pixel-slate"
+    echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate (camera + audio optimized) config${NC}"
+else
+    CONFIG_FILE="$BASE_DIR/configs/config-6.18.3-march-native"
+    echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
+fi
 
 if [ ! -d "$KERNEL_DIR" ]; then
     echo -e "${RED}Error: Kernel directory not found: $KERNEL_DIR${NC}"
@@ -43,33 +55,57 @@ echo "  Compiler: Clang/LLVM"
 echo "  Jobs: $(nproc)"
 echo ""
 
-# Verify critical optimizations are enabled
+# Verify critical optimizations are enabled based on branch
 echo -e "${BLUE}Verifying optimizations...${NC}"
-if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
-    echo -e "${GREEN}✓ march=native enabled (CONFIG_X86_NATIVE_CPU)${NC}"
+
+# Check march settings per branch
+if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ]; then
+    if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
+        echo -e "${GREEN}✓ march=native enabled (CONFIG_X86_NATIVE_CPU)${NC}"
+    else
+        echo -e "${YELLOW}⚠ march=native not found in config${NC}"
+    fi
+elif [ "$BRANCH" = "pixel-slate" ]; then
+    echo -e "${GREEN}✓ march=skylake optimizations will be applied (Pixel Slate - Kaby Lake)${NC}"
 else
-    echo -e "${YELLOW}⚠ march=native not found in config${NC}"
+    echo -e "${YELLOW}⚠ Using generic x86-64 optimizations on $BRANCH branch${NC}"
 fi
 
+# Check LTO status
 if grep -q "CONFIG_LTO_CLANG_FULL=y" .config; then
     echo -e "${GREEN}✓ Full LTO enabled (CONFIG_LTO_CLANG_FULL)${NC}"
+elif grep -q "CONFIG_LTO_NONE=y" .config; then
+    echo -e "${YELLOW}⚠ LTO disabled (CONFIG_LTO_NONE)${NC}"
 else
-    echo -e "${YELLOW}⚠ Full LTO not found in config${NC}"
-fi
-
-if grep -q "CONFIG_SCHED_BORE=y" .config; then
-    echo -e "${GREEN}✓ BORE scheduler enabled (CONFIG_SCHED_BORE)${NC}"
-else
-    echo -e "${YELLOW}⚠ BORE scheduler not found in config${NC}"
+    echo -e "${YELLOW}⚠ LTO status unknown${NC}"
 fi
 
 echo ""
 echo -e "${BLUE}Starting kernel build...${NC}"
 echo ""
 
-# Build kernel with LLVM and custom localversion
-make LLVM=-20 LOCALVERSION=-BobZKernel -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
+# Set architecture-specific optimizations for pixel-slate branch
+if [ "$BRANCH" = "pixel-slate" ]; then
+    echo -e "${BLUE}Applying Skylake (Kaby Lake) optimizations for Pixel Slate...${NC}"
+    KCFLAGS="-march=skylake -mtune=skylake"
+    export KCFLAGS
+fi
+
+# Build kernel with LLVM (don't override LOCALVERSION - let config file define it)
+# Set up log file
+LOG_FILE="$BASE_DIR/build-$KERNEL_VERSION-$(date +%Y%m%d-%H%M%S).log"
+
+# Build and capture output
+{
+    echo "Build started at $(date)"
+    echo "Branch: $BRANCH"
+    echo "Kernel Version: $KERNEL_VERSION"
+    echo ""
+    make LLVM=-20 -j$(nproc)
+    echo ""
+    echo "Build completed at $(date)"
+} 2>&1 | tee "$LOG_FILE"
 
 echo ""
 echo -e "${GREEN}✓ Kernel build completed successfully!${NC}"
-echo -e "${BLUE}Build log saved to: $BASE_DIR/build-$KERNEL_VERSION.log${NC}"
+echo -e "${BLUE}Build log saved to: $LOG_FILE${NC}"
