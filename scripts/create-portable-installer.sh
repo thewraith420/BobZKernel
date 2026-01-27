@@ -95,7 +95,7 @@ EOF
 
 # Create the installer script
 echo -e "${BLUE}Creating installer script...${NC}"
-cat > "$INSTALLER_DIR/install.sh" <<INSTALLER_SCRIPT
+cat > "$INSTALLER_DIR/install.sh" <<'INSTALLER_SCRIPT'
 #!/bin/bash
 # BobZKernel Portable Installer
 # Automatically detects distribution and installs kernel
@@ -117,7 +117,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNELRELEASE=$(basename "$SCRIPT_DIR/boot"/vmlinuz-* | sed 's/vmlinuz-//')
+KERNELRELEASE=$(basename "$SCRIPT_DIR/boot"/vmlinuz-* 2>/dev/null | grep -v '\.old$' | head -1 | sed 's/vmlinuz-//')
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║         BobZKernel Portable Installer                 ║${NC}"
@@ -281,12 +281,9 @@ echo
 echo -e "${GREEN}Kernel $KERNELRELEASE has been installed successfully.${NC}"
 echo -e "${YELLOW}Please reboot your system and select the new kernel from GRUB.${NC}"
 echo
-echo -e "${BLUE}Note: This kernel was optimized for:${NC}"
-echo -e "  - $MARCH_OPTIMIZATION"
-if grep -q "CONFIG_X86_NATIVE_CPU=y" "$SCRIPT_DIR/boot/config-\$KERNELRELEASE"; then
-    echo -e "  - CPU-specific optimizations (may not work on different CPUs)"
-else
-    echo -e "  - Compatible with most x86-64 processors"
+echo -e "${BLUE}Kernel optimizations:${NC}"
+if [ -f "$SCRIPT_DIR/VERSION" ]; then
+    grep -E "march|BORE|LTO|BBR" "$SCRIPT_DIR/VERSION" | sed 's/^/  /'
 fi
 echo
 
@@ -314,7 +311,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNELRELEASE=$(basename "$SCRIPT_DIR/boot"/vmlinuz-* | sed 's/vmlinuz-//')
+KERNELRELEASE=$(basename "$SCRIPT_DIR/boot"/vmlinuz-* 2>/dev/null | grep -v '\.old$' | head -1 | sed 's/vmlinuz-//')
 
 echo -e "${YELLOW}This will remove kernel $KERNELRELEASE from your system.${NC}"
 read -p "Are you sure? [y/N] " -n 1 -r
@@ -361,7 +358,7 @@ This is a portable kernel installer package that can be used to install the BobZ
 
 ## Requirements
 
-- x86_64 CPU$([[ "$MARCH_OPTIMIZATION" == *"march=native"* ]] && echo " (preferably matching the build CPU for best performance)" || echo "")
+- x86_64 CPU
 - Linux distribution with:
   - GRUB bootloader
   - systemd or compatible init system
@@ -371,9 +368,9 @@ This is a portable kernel installer package that can be used to install the BobZ
 
 1. Extract this package to any location
 2. Run the installer as root:
-   ```bash
+   \`\`\`bash
    sudo ./install.sh
-   ```
+   \`\`\`
 3. Reboot and select the BobZKernel from GRUB
 
 ## Supported Distributions
@@ -387,26 +384,26 @@ The installer auto-detects and supports:
 ## Uninstallation
 
 To remove the kernel:
-```bash
+\`\`\`bash
 sudo ./uninstall.sh
-```
+\`\`\`
 
 ## DKMS Modules
 
 If you use DKMS modules (NVIDIA, VirtualBox, etc.), they will need to be rebuilt for this kernel:
 
-```bash
-sudo dkms autoinstall -k $(make -C . kernelrelease)
-```
+\`\`\`bash
+sudo dkms autoinstall -k \$(make -C . kernelrelease)
+\`\`\`
 
 Or manually:
-```bash
-sudo dkms install -m MODULE_NAME -v VERSION -k KERNEL_VERSION
-```
+\`\`\`bash
+sudo dkms install -m MODULE_NAME -v <VERSION> -k <KERNEL_VERSION>
+\`\`\`
 
 ## Important Notes
 
-- This kernel is compiled with $MARCH_OPTIMIZATION$([[ "$MARCH_OPTIMIZATION" == *"march=native"* ]] && echo "\n- It may not boot or perform optimally on different CPU architectures" || echo "")
+- This kernel is compiled with $MARCH_OPTIMIZATION
 - CONFIG_MODVERSIONS is disabled for DKMS compatibility with LTO
 
 ## Troubleshooting
@@ -418,7 +415,7 @@ If the system doesn't boot:
 
 ## Version Info
 
-See the `VERSION` file for detailed build information.
+See the \`VERSION\` file for detailed build information.
 README
 
 # Create tarball

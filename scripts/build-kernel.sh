@@ -92,8 +92,20 @@ if [ "$BRANCH" = "pixel-slate" ]; then
 fi
 
 # Build kernel with LLVM (don't override LOCALVERSION - let config file define it)
-make LLVM=-20 -j$(nproc) 2>&1 | tee "$BASE_DIR/build-$KERNEL_VERSION.log"
+# Set up log file
+LOG_FILE="$BASE_DIR/build-$KERNEL_VERSION-$(date +%Y%m%d-%H%M%S).log"
+
+# Build and capture output
+{
+    echo "Build started at $(date)"
+    echo "Branch: $BRANCH"
+    echo "Kernel Version: $KERNEL_VERSION"
+    echo ""
+    make LLVM=-20 -j$(nproc)
+    echo ""
+    echo "Build completed at $(date)"
+} 2>&1 | tee "$LOG_FILE"
 
 echo ""
 echo -e "${GREEN}✓ Kernel build completed successfully!${NC}"
-echo -e "${BLUE}Build log saved to: $BASE_DIR/build-$KERNEL_VERSION.log${NC}"
+echo -e "${BLUE}Build log saved to: $LOG_FILE${NC}"

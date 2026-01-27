@@ -57,7 +57,7 @@ fi
 
 # Step 1: Update kernel source (optional)
 if [ "$SKIP_UPDATE" = false ]; then
-    echo -e "${BLUE}═══ Step 1/6: Updating Kernel Source ═══${NC}"
+    echo -e "${BLUE}═══ Step 1/7: Updating Kernel Source ═══${NC}"
     cd "$BASE_DIR"
     AUTO_YES=$AUTO_YES ./scripts/update-kernel-source.sh "$KERNEL_VERSION" || {
         echo -e "${RED}Kernel update failed!${NC}"
@@ -223,4 +223,4 @@ echo ""
 echo -e "${BLUE}Kernel build artifacts:${NC}"
 echo "  Image: builds/linux-$KERNEL_VERSION/arch/x86/boot/bzImage"
 echo "  Modules: lib/modules/\$(make -C builds/linux-$KERNEL_VERSION kernelrelease)"
-echo "  Log: build.log"
+echo "  Log: build-$KERNEL_VERSION-*.log (timestamped)"
