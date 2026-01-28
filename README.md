@@ -80,12 +80,18 @@ This complete workflow:
 sudo ./scripts/install-kernel.sh
 ```
 
-#### Create Distribution Installer
+#### Create Portable Installer
 
 ```bash
-# Build both architectures, then:
-./scripts/create-multi-arch-installer.sh
+# After building the kernel:
+./scripts/create-portable-installer.sh
 ```
+
+This creates a portable tarball installer that:
+- Auto-detects the target system's distribution
+- Includes all kernel files and modules
+- Provides install/uninstall scripts
+- Works across Ubuntu, Debian, Fedora, Arch, and more
 
 ## System Requirements
 
@@ -109,8 +115,8 @@ BobZKernel/
 ├── scripts/
 │   ├── update-and-build.sh            # Complete automated workflow
 │   ├── build-kernel.sh                # Build kernel only
-│   ├── install-kernel.sh              # Install kernel + DKMS (with auto-rebuild)
-│   ├── create-multi-arch-installer.sh # Create distribution installer
+│   ├── install-kernel.sh              # Install kernel locally
+│   ├── create-portable-installer.sh   # Create portable installer package
 │   ├── update-kernel-source.sh        # Fetch upstream updates
 │   ├── apply-patches.sh               # Apply CachyOS patches
 │   ├── verify-patches.sh              # Verify patch integrity
