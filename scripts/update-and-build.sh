@@ -97,6 +97,13 @@ echo -e "${BLUE}═══ Step 4/7: Verifying Patches ═══${NC}"
 echo -e "${GREEN}✓ Patches verified${NC}"
 echo ""
 
+# Step 4.5: Apply cluster-aware NVMe IRQ optimization backport
+echo -e "${BLUE}═══ Applying NVMe Cluster-Aware IRQ Optimization ═══${NC}"
+./scripts/apply-cluster-aware-backport.sh || {
+    echo -e "${YELLOW}⚠ Cluster-aware backport failed - continuing without it${NC}"
+}
+echo ""
+
 # Step 5: Apply config and build
 echo -e "${BLUE}═══ Step 5/7: Building Kernel ═══${NC}"
 cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
