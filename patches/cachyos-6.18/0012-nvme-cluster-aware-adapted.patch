@@ -28,7 +28,7 @@ diff --git a/lib/group_cpus.c b/lib/group_cpus.c
 index 6d08ac05f371..a93df70919df 100644
 --- a/lib/group_cpus.c
 +++ b/lib/group_cpus.c
-@@ -114,48 +114,15 @@ static int ncpus_cmp_func(const void *l, const void *r)
+@@ -130,48 +130,15 @@ static int ncpus_cmp_func(const void *l, const void *r)
  	return ln->ncpus - rn->ncpus;
  }
  
@@ -84,7 +84,7 @@ index 6d08ac05f371..a93df70919df 100644
  	     ncpus_cmp_func, NULL);
  
  	/*
-@@ -226,9 +193,8 @@ static void alloc_nodes_groups(unsigned int numgrps,
+@@ -242,9 +209,8 @@ static void alloc_nodes_groups(unsigned int numgrps,
  	 * finally for each node X: grps(X) <= ncpu(X).
  	 *
  	 */
@@ -95,7 +95,7 @@ index 6d08ac05f371..a93df70919df 100644
  		if (node_groups[n].ncpus == UINT_MAX)
  			continue;
  
-@@ -246,12 +212,201 @@ static void alloc_nodes_groups(unsigned int numgrps,
+@@ -262,12 +228,201 @@ static void alloc_nodes_groups(unsigned int numgrps,
  	}
  }
  
@@ -298,7 +298,7 @@ index 6d08ac05f371..a93df70919df 100644
  	unsigned int last_grp = numgrps;
  	unsigned int curgrp = startgrp;
  	nodemask_t nodemsk = NODE_MASK_NONE;
-@@ -287,7 +442,7 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
+@@ -303,7 +458,7 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
  	alloc_nodes_groups(numgrps, node_to_cpumask, cpu_mask,
  			   nodemsk, nmsk, node_groups);
  	for (i = 0; i < nr_node_ids; i++) {
@@ -307,7 +307,7 @@ index 6d08ac05f371..a93df70919df 100644
  		struct node_groups *nv = &node_groups[i];
  
  		if (nv->ngroups == UINT_MAX)
-@@ -301,28 +456,14 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
+@@ -317,28 +472,14 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
  
  		WARN_ON_ONCE(nv->ngroups > ncpus);
  
