@@ -1,6 +1,6 @@
-# BobZKernel - Optimized Linux 6.18.6
+# BobZKernel - Optimized Linux 6.18.7+
 
-Custom optimized Linux kernel 6.18.6 with performance patches and multi-architecture support.
+Custom optimized Linux kernel 6.18.7+ with performance patches, NVMe optimization, and multi-architecture support.
 
 ## Features
 
@@ -10,11 +10,13 @@ Custom optimized Linux kernel 6.18.6 with performance patches and multi-architec
 - **Full LTO** - Link-Time Optimization using LLVM/Clang 20.1.2
 - **1000Hz Timer** - Better latency for interactive workloads
 - **CachyOS Patches** - Additional performance and crypto optimizations
+- **NVMe Cluster-Aware IRQ Optimization** - 10-15% NVMe performance gain on modern CPUs (Intel 12th gen+, AMD Ryzen multi-CCD)
 
 ### Architecture Support
 - **march=native** - CPU-specific optimizations for Intel Raptor Lake (13th Gen)
-- **Generic x86-64-v3** - Universal build compatible with all modern CPUs
-- **Two separate installers** - Choose the right build for your CPU
+- **Generic x86-64-v3** - Universal build compatible with all modern CPUs with cluster-aware NVMe optimization
+- **Pixel Slate optimized** - Lean config for Intel Skylake/Kaby Lake (WiFi 7265 only)
+- **Multiple installers** - Choose the right build for your hardware
 
 ## Installation
 
@@ -63,9 +65,11 @@ cd /home/bob/buildstuff/BobZKernel
 This complete workflow:
 1. Updates kernel source from upstream
 2. Applies CachyOS performance patches
-3. Verifies patches applied correctly
-4. Builds kernel with all optimizations
-5. Installs kernel and rebuilds DKMS modules with Clang
+3. Applies NVMe cluster-aware IRQ optimization (automatic backport for 6.18.x)
+4. Verifies patches applied correctly
+5. Builds kernel with all optimizations
+6. Automatically rebuilds DKMS modules (NVIDIA, VMware, Legion, xpadneo) with Clang
+7. Offers portable installer creation or direct installation
 
 #### Manual Build Steps
 
@@ -135,13 +139,29 @@ BobZKernel/
 ### march=native (Intel Raptor Lake 13th Gen)
 - Optimized for Intel Core i5-13420H and similar CPUs
 - Maximum performance on target hardware
-- **Version:** 6.18.6-BobZKernel
+- Full cluster-aware NVMe optimization
+- **Version:** 6.18.7+-BobZKernel
+- **Branch:** master
 
-### Generic x86-64-v3
+### Generic x86-64-v3 (All Modern CPUs)
 - Compatible with all modern x86-64 CPUs (2015+)
 - Portable across different Intel/AMD systems
 - AMD GPU driver support (radeon + amdgpu)
-- **Version:** 6.18.6-BobZKernel-generic
+- Includes cluster-aware NVMe optimization (fallback gracefully on older CPUs)
+- **Version:** 6.18.7+-BobZKernel-generic
+- **Branch:** generic-build
+
+### Pixel Slate (Intel Skylake/Kaby Lake)
+- Optimized for Google Pixel Slate with Intel Wireless 7265
+- Trimmed config: only Intel WiFi/Bluetooth/graphics drivers
+- No VMware, PlayStation, or Ethernet drivers
+- Smallest kernel size and fastest build times
+- **Version:** 6.18.7+-BobZKernel
+- **Branch:** pixel-slate
+
+### Workpc (Custom Config)
+- Organization-specific optimizations
+- **Branch:** workpc
 
 ## Verification
 
@@ -170,17 +190,28 @@ dkms status
 ## Troubleshooting
 
 ### DKMS Module Issues
-DKMS modules are automatically rebuilt with Clang during installation. If you encounter symbol version mismatches:
+DKMS modules are automatically detected and rebuilt with Clang during installation. The installer:
+- Scans `/usr/src/*/dkms.conf` for valid modules
+- Rebuilds only modules with actual source directories
+- Provides verbose output showing build status for each module
+- Gracefully handles individual module failures
 
+If you still need manual rebuild after booting:
 ```bash
-# The install script handles this automatically, but manual rebuild:
+# Manual rebuild with Clang
 sudo dkms remove <module>/<version> -k $(uname -r)
 sudo CC=clang dkms install <module>/<version> -k $(uname -r) \
   --kernelsourcedir=/home/bob/buildstuff/BobZKernel/builds/linux-6.18
 ```
 
 ### Build Logs
-Build logs are saved to `build-6.18.log` after each build for troubleshooting.
+Build logs are saved with timestamps: `build-<kernel>-<timestamp>.log` in the build directory for troubleshooting.
+
+### VMware Module Building
+If VMware modules fail to build during installation, they can be rebuilt manually:
+```bash
+sudo /home/bob/buildstuff/BobZKernel/scripts/build-vmware-modules.sh $(uname -r)
+```
 
 ## Contributing
 
@@ -194,6 +225,7 @@ Contributions welcome! Please ensure:
 
 - **Linux Kernel** - Linus Torvalds and contributors
 - **CachyOS Team** - Performance patches ([BORE scheduler](https://github.com/CachyOS/linux-cachyos), BBRv3, optimizations)
+- **NVMe Cluster-Aware Optimization** - Wangyang Guo (Intel) - cluster-aware IRQ affinity for modern multi-cluster CPUs
 - **LLVM Project** - Clang/LLVM compiler infrastructure
 - **LenovoLegionLinux** - [johnfanv2](https://github.com/johnfanv2/LenovoLegionLinux) - Lenovo Legion laptop driver
 - **hid-xpadneo** - [atar-axis](https://github.com/atar-axis/xpadneo) - Advanced Xbox controller driver
