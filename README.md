@@ -200,17 +200,29 @@ If you still need manual rebuild after booting:
 ```bash
 # Manual rebuild with Clang
 sudo dkms remove <module>/<version> -k $(uname -r)
-sudo CC=clang dkms install <module>/<version> -k $(uname -r) \
-  --kernelsourcedir=/home/bob/buildstuff/BobZKernel/builds/linux-6.18
+sudo CC=clang dkms install <module>/<version> -k $(uname -r)
 ```
 
 ### Build Logs
-Build logs are saved with timestamps: `build-<kernel>-<timestamp>.log` in the build directory for troubleshooting.
+Build logs are saved with timestamps in the build directory for troubleshooting.
 
 ### VMware Module Building
-If VMware modules fail to build during installation, they can be rebuilt manually:
+If VMware modules fail to build during installation, you can rebuild them with:
 ```bash
-sudo /home/bob/buildstuff/BobZKernel/scripts/build-vmware-modules.sh $(uname -r)
+# Rebuild VMware modules for current kernel
+cd /tmp
+mkdir -p vmware-build
+cd vmware-build
+tar -xf /usr/lib/vmware/modules/source/vmmon.tar
+tar -xf /usr/lib/vmware/modules/source/vmnet.tar
+cd vmmon-only && make && sudo make install KVER=$(uname -r)
+cd ../vmnet-only && make && sudo make install KVER=$(uname -r)
+```
+
+Alternatively, if you have the BobZKernel source available locally:
+```bash
+# Rebuild with explicit kernel source
+sudo /path/to/BobZKernel/scripts/build-vmware-modules.sh $(uname -r)
 ```
 
 ## Contributing
