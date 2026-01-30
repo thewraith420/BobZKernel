@@ -90,24 +90,29 @@ export HOSTLD=ld.lld
 export LLVM=-20
 export LLVM_IAS=1
 
-# Get list of all installed DKMS modules (only with valid source directories)
+# Get list of all installed DKMS modules (query DKMS directly for accurate names)
 echo "Detecting installed DKMS modules..."
 DKMS_MODULES=""
-for module_dir in /usr/src/*/dkms.conf; do
-    if [ -f "$module_dir" ]; then
-        module_path=$(dirname "$module_dir")
-        module_fullname=$(basename "$module_path")
-        # Extract name and version (format: name-version)
-        module_name=$(echo "$module_fullname" | rev | cut -d'-' -f2- | rev)
-        module_version=$(echo "$module_fullname" | rev | cut -d'-' -f1 | rev)
+# Get unique module/version pairs from dkms status output
+while IFS= read -r line; do
+    if [ -n "$line" ]; then
+        # Extract module/version from "module/version, kernel, arch: status" format
+        module_version=$(echo "$line" | cut -d',' -f1)
+        # Verify source directory exists
+        module_name=$(echo "$module_version" | cut -d'/' -f1)
+        version=$(echo "$module_version" | cut -d'/' -f2)
 
-        # Verify this module is actually registered with DKMS
-        if dkms status "$module_name/$module_version" >/dev/null 2>&1; then
-            DKMS_MODULES="$DKMS_MODULES $module_name/$module_version"
-            echo -e "${GREEN}  Found: $module_name/$module_version${NC}"
+        # Check if source exists in /usr/src
+        if ls /usr/src/${module_name}-${version} >/dev/null 2>&1 || \
+           ls /usr/src/${module_name}*${version}* >/dev/null 2>&1; then
+            # Add if not already in list
+            if ! echo "$DKMS_MODULES" | grep -q "$module_version"; then
+                DKMS_MODULES="$DKMS_MODULES $module_version"
+                echo -e "${GREEN}  Found: $module_version${NC}"
+            fi
         fi
     fi
-done
+done < <(dkms status 2>/dev/null | grep -v "^Error" | grep -v "^File:")
 
 if [ -z "$DKMS_MODULES" ]; then
     echo -e "${YELLOW}No DKMS modules found to build${NC}"
