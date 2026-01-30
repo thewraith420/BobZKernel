@@ -55,16 +55,54 @@ if [ "$AUTO_YES" = false ]; then
     fi
 fi
 
-# Step 1: Update kernel source (optional)
+# Step 1: Check for kernel updates (automatic unless --skip-update is used)
 if [ "$SKIP_UPDATE" = false ]; then
-    echo -e "${BLUE}═══ Step 1/7: Updating Kernel Source ═══${NC}"
-    cd "$BASE_DIR"
-    AUTO_YES=$AUTO_YES ./scripts/update-kernel-source.sh "$KERNEL_VERSION" || {
-        echo -e "${RED}Kernel update failed!${NC}"
-        exit 1
-    }
-    echo -e "${GREEN}✓ Kernel source updated${NC}"
-    echo ""
+    echo -e "${BLUE}═══ Step 1/7: Checking for Kernel Updates ═══${NC}"
+    cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+
+    # Check if updates are available without --yes flag to get user prompt if needed
+    echo -e "${BLUE}Fetching latest changes from upstream...${NC}"
+    git fetch upstream > /dev/null 2>&1
+
+    CURRENT_HASH=$(git rev-parse HEAD)
+    UPSTREAM_HASH=$(git rev-parse upstream/linux-6.18.y)
+
+    if [ "$CURRENT_HASH" = "$UPSTREAM_HASH" ]; then
+        echo -e "${YELLOW}⊘ No updates available${NC}"
+        echo -e "${BLUE}Current version: $(git log -1 --oneline)${NC}"
+        echo ""
+        # Proceed with build (no prompt needed)
+    else
+        echo -e "${BLUE}Updates available from upstream${NC}"
+        echo -e "${YELLOW}Current:  $(git log -1 --oneline)${NC}"
+        echo -e "${GREEN}Latest:   $(git log -1 upstream/linux-6.18.y --oneline)${NC}"
+        echo ""
+
+        if [ "$AUTO_YES" = false ]; then
+            read -p "Apply kernel updates? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo -e "${YELLOW}Skipping updates, proceeding with current version${NC}"
+                echo ""
+            else
+                echo -e "${BLUE}Merging upstream changes...${NC}"
+                git merge upstream/linux-6.18.y --no-edit || {
+                    echo -e "${RED}Merge conflict detected. Please resolve manually.${NC}"
+                    exit 1
+                }
+                echo -e "${GREEN}✓ Kernel source updated${NC}"
+                echo ""
+            fi
+        else
+            echo -e "${BLUE}Auto-updating kernel source...${NC}"
+            git merge upstream/linux-6.18.y --no-edit || {
+                echo -e "${RED}Merge conflict detected. Please resolve manually.${NC}"
+                exit 1
+            }
+            echo -e "${GREEN}✓ Kernel source updated${NC}"
+            echo ""
+        fi
+    fi
 else
     echo -e "${YELLOW}⊘ Skipping kernel source update${NC}"
     echo ""
