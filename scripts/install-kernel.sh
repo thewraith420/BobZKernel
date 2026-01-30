@@ -53,7 +53,7 @@ if [ -f /etc/kernel/postinst.d/dkms ]; then
     DKMS_HOOK_DISABLED=true
 fi
 
-make LLVM=-20 LOCALVERSION=$LOCALVERSION install
+make LLVM=-20 install
 
 # Re-enable DKMS hook
 if [ "$DKMS_HOOK_DISABLED" = true ]; then
@@ -61,9 +61,9 @@ if [ "$DKMS_HOOK_DISABLED" = true ]; then
 fi
 
 echo -e "${BLUE}Step 3: Installing modules...${NC}"
-make LLVM=-20 LOCALVERSION=$LOCALVERSION modules_install
+make LLVM=-20 modules_install
 
-KERNEL_VERSION=$(make LOCALVERSION=$LOCALVERSION kernelrelease)
+KERNEL_VERSION=$(make LLVM=-20 kernelrelease)
 
 echo -e "${BLUE}Step 4: Compressing modules with zstd...${NC}"
 find /lib/modules/$KERNEL_VERSION -name '*.ko' -exec zstd --rm -q -T0 {} \;
