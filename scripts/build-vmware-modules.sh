@@ -79,16 +79,16 @@ MODULES_DIR="/lib/modules/$KERNEL_VERSION/updates"
 
 if [ ! -d "$MODULES_DIR" ]; then
     echo -e "${YELLOW}Creating $MODULES_DIR${NC}"
-    sudo mkdir -p "$MODULES_DIR"
+    mkdir -p "$MODULES_DIR"
 fi
 
-sudo cp vmmon-only/vmmon.ko "$MODULES_DIR/"
-sudo cp vmnet-only/vmnet.ko "$MODULES_DIR/"
+cp vmmon-only/vmmon.ko "$MODULES_DIR/"
+cp vmnet-only/vmnet.ko "$MODULES_DIR/"
 echo -e "${GREEN}✓ Modules installed${NC}"
 
 # Update depmod
 echo -e "${BLUE}Step 7: Updating module dependencies...${NC}"
-sudo depmod -a "$KERNEL_VERSION"
+depmod -a "$KERNEL_VERSION"
 echo -e "${GREEN}✓ depmod updated${NC}"
 
 # Cleanup
