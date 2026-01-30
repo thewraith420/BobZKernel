@@ -60,6 +60,13 @@ if [ "$SKIP_UPDATE" = false ]; then
     echo -e "${BLUE}═══ Step 1/7: Checking for Kernel Updates ═══${NC}"
     cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
+    # Clean up any uncommitted changes or merge conflicts from previous builds
+    if [ -n "$(git status --porcelain)" ]; then
+        echo -e "${YELLOW}Cleaning up uncommitted changes from previous build...${NC}"
+        git reset --hard HEAD
+        git clean -fd
+    fi
+
     # Check if updates are available without --yes flag to get user prompt if needed
     echo -e "${BLUE}Fetching latest changes from upstream...${NC}"
     git fetch upstream > /dev/null 2>&1
