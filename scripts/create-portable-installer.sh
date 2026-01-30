@@ -48,7 +48,16 @@ else
 fi
 
 INSTALLER_DIR="$BASE_DIR/installer-$KERNELRELEASE"
-PACKAGE_NAME="BobZKernel-${KERNELRELEASE}-installer.tar.gz"
+
+# Create clean version for package naming (remove duplicate BobZKernel on master branch)
+if [ "$BRANCH" = "master" ]; then
+    # On master: "6.18.7-BobZKernel+" -> "6.18.7+" for filename
+    PACKAGE_VERSION=$(echo "$KERNELRELEASE" | sed 's/-BobZKernel//')
+    PACKAGE_NAME="BobZKernel-${PACKAGE_VERSION}-installer.tar.gz"
+else
+    # On other branches: use version as-is
+    PACKAGE_NAME="BobZKernel-${KERNELRELEASE}-installer.tar.gz"
+fi
 
 echo -e "${BLUE}Creating portable installer for kernel $KERNELRELEASE${NC}"
 echo
