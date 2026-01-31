@@ -10,6 +10,7 @@
  */
 
 #include <linux/revocable.h>
+#include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/srcu.h>
 
