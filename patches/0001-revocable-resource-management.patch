@@ -1,0 +1,400 @@
+diff --git a/Documentation/driver-api/driver-model/index.rst b/Documentation/driver-api/driver-model/index.rst
+index 4831bdd92e5c..8e1ee21185df 100644
+--- a/Documentation/driver-api/driver-model/index.rst
++++ b/Documentation/driver-api/driver-model/index.rst
+@@ -14,6 +14,7 @@ Driver Model
+    overview
+    platform
+    porting
++   revocable
+ 
+ .. only::  subproject and html
+ 
+diff --git a/Documentation/driver-api/driver-model/revocable.rst b/Documentation/driver-api/driver-model/revocable.rst
+new file mode 100644
+index 000000000000..41a15045ee56
+--- /dev/null
++++ b/Documentation/driver-api/driver-model/revocable.rst
+@@ -0,0 +1,121 @@
++==========================
++Revocable Resource Management
++==========================
++
++Overview
++========
++
++Revocable provides a mechanism for managing resources that can be asynchronously
++removed, such as those from hot-pluggable devices (USB, PCIe, etc.). It prevents
++use-after-free errors by enabling safe access patterns when device removal may
++occur at any time.
++
++Unlike device-managed (devm) resources that are tied to device lifetime, revocable
++resources persist as long as consumers hold references to them, allowing safe
++access attempts even after the underlying device has been removed.
++
++Design
++======
++
++The revocable system uses a provider/consumer model built on Sleepable RCU (SRCU):
++
++**Providers** own resources and can revoke access at any time by calling
++``revocable_provider_revoke()``. This sets the resource pointer to NULL and
++synchronizes with SRCU to ensure all active readers have finished.
++
++**Consumers** attempt to access a provider's resource by calling
++``revocable_try_access()``. This returns either the resource pointer (if valid)
++or NULL (if revoked), and the caller is guaranteed safe access for the duration
++of the critical section.
++
++Usage Example
++=============
++
++Provider Side
++-------------
++
++::
++
++    struct my_device {
++        struct revocable_provider *provider;
++        struct resource *res;
++    };
++
++    static int my_device_probe(struct platform_device *pdev)
++    {
++        struct my_device *dev;
++
++        dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
++        if (!dev)
++            return -ENOMEM;
++
++        dev->res = devm_request_resource(...);
++        dev->provider = devm_revocable_provider_alloc(&pdev->dev, dev->res);
++        if (!dev->provider)
++            return -ENOMEM;
++
++        return 0;
++    }
++
++    static void my_device_remove(struct platform_device *pdev)
++    {
++        struct my_device *dev = platform_get_drvdata(pdev);
++
++        revocable_provider_revoke(dev->provider);
++    }
++
++Consumer Side
++-------------
++
++::
++
++    struct my_consumer {
++        struct revocable *rev;
++    };
++
++    static int access_resource(struct my_consumer *cons)
++    {
++        struct resource *res;
++        int idx;
++        int ret = 0;
++
++        res = revocable_try_access(cons->rev, &idx);
++        if (!res) {
++            return -ENODEV;  // Resource was revoked
++        }
++
++        ret = do_something_with(res);
++
++        revocable_withdraw_access(cons->rev, idx);
++        return ret;
++    }
++
++    // Alternatively, using the convenience macro:
++    static int access_resource_with_macro(struct my_consumer *cons)
++    {
++        // REVOCABLE_TRY_ACCESS_WITH(cons->rev, res) {
++        //     if (res)
++        //         return do_something_with(res);
++        // }
++    }
++
++API Reference
++=============
++
++Provider API
++------------
++
++.. kernel-doc:: drivers/base/revocable.c
++   :functions: revocable_provider_alloc devm_revocable_provider_alloc revocable_provider_revoke
++
++Consumer API
++------------
++
++.. kernel-doc:: drivers/base/revocable.c
++   :functions: revocable_alloc revocable_free revocable_try_access revocable_withdraw_access
++
++Macros
++------
++
++.. kernel-doc:: include/linux/revocable.h
++   :functions: REVOCABLE_TRY_ACCESS_WITH
+diff --git a/MAINTAINERS b/MAINTAINERS
+index e8f06145fb54..c3457fe22f2c 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -7582,7 +7582,10 @@ M:	Danilo Krummrich <dakr@kernel.org>
+ S:	Supported
+ T:	git git://git.kernel.org/pub/scm/linux/kernel/git/driver-core/driver-core.git
+ F:	Documentation/core-api/kobject.rst
++F:	Documentation/driver-api/driver-model/revocable.rst
+ F:	drivers/base/
++F:	drivers/base/revocable.c
++F:	include/linux/revocable.h
+ F:	fs/debugfs/
+ F:	fs/sysfs/
+ F:	include/linux/device/
+diff --git a/drivers/base/Makefile b/drivers/base/Makefile
+index 8074a10183dc..bdf854694e39 100644
+--- a/drivers/base/Makefile
++++ b/drivers/base/Makefile
+@@ -6,7 +6,7 @@ obj-y			:= component.o core.o bus.o dd.o syscore.o \
+ 			   cpu.o firmware.o init.o map.o devres.o \
+ 			   attribute_container.o transport_class.o \
+ 			   topology.o container.o property.o cacheinfo.o \
+-			   swnode.o faux.o
++			   swnode.o faux.o revocable.o
+ obj-$(CONFIG_AUXILIARY_BUS) += auxiliary.o
+ obj-$(CONFIG_DEVTMPFS)	+= devtmpfs.o
+ obj-y			+= power/
+diff --git a/drivers/base/revocable.c b/drivers/base/revocable.c
+new file mode 100644
+index 000000000000..ba8a7318a246
+--- /dev/null
++++ b/drivers/base/revocable.c
+@@ -0,0 +1,152 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Revocable Resource Management
++ *
++ * Provides a mechanism for safely managing resources that can be
++ * asynchronously removed, such as those from hot-pluggable devices.
++ * Uses a provider/consumer model built on Sleepable RCU (SRCU).
++ *
++ * Copyright 2025 Google LLC
++ */
++
++#include <linux/revocable.h>
++#include <linux/device.h>
++#include <linux/slab.h>
++#include <linux/srcu.h>
++
++static DEFINE_SRCU(revocable_srcu);
++
++/**
++ * revocable_provider_alloc - Allocate a revocable provider handle
++ * @resource: Pointer to the resource being provided
++ *
++ * Allocates a new provider handle for a resource that may be asynchronously
++ * removed. Returns a pointer to the allocated provider structure, or NULL
++ * on allocation failure.
++ */
++struct revocable_provider *revocable_provider_alloc(void *resource)
++{
++	struct revocable_provider *provider;
++
++	provider = kmalloc(sizeof(*provider), GFP_KERNEL);
++	if (!provider)
++		return NULL;
++
++	provider->resource = resource;
++	return provider;
++}
++EXPORT_SYMBOL_GPL(revocable_provider_alloc);
++
++/**
++ * devm_revocable_provider_alloc - Device-managed revocable provider allocation
++ * @dev: Device managing the provider
++ * @resource: Pointer to the resource being provided
++ *
++ * Allocates a provider handle with device-managed resource cleanup.
++ * The provider will be automatically freed when the device is removed.
++ */
++struct revocable_provider *devm_revocable_provider_alloc(struct device *dev,
++							 void *resource)
++{
++	struct revocable_provider *provider;
++
++	provider = devm_kmalloc(dev, sizeof(*provider), GFP_KERNEL);
++	if (!provider)
++		return NULL;
++
++	provider->resource = resource;
++	return provider;
++}
++EXPORT_SYMBOL_GPL(devm_revocable_provider_alloc);
++
++/**
++ * revocable_provider_revoke - Revoke a provider's resource
++ * @provider: Provider to revoke
++ *
++ * Marks the provider's resource as revoked and waits for all active
++ * consumers to finish accessing it. After this function returns, no new
++ * consumers can access the resource, and all existing accesses will
++ * receive NULL.
++ */
++void revocable_provider_revoke(struct revocable_provider *provider)
++{
++	if (!provider)
++		return;
++
++	provider->resource = NULL;
++	synchronize_srcu(&revocable_srcu);
++}
++EXPORT_SYMBOL_GPL(revocable_provider_revoke);
++
++/**
++ * revocable_alloc - Allocate a consumer handle
++ * @provider: Provider to consume from
++ *
++ * Allocates a consumer handle for accessing a provider's resource.
++ * Returns a pointer to the allocated consumer structure, or NULL
++ * on allocation failure.
++ */
++struct revocable *revocable_alloc(struct revocable_provider *provider)
++{
++	struct revocable *rev;
++
++	rev = kmalloc(sizeof(*rev), GFP_KERNEL);
++	if (!rev)
++		return NULL;
++
++	rev->provider = provider;
++	return rev;
++}
++EXPORT_SYMBOL_GPL(revocable_alloc);
++
++/**
++ * revocable_free - Release a consumer handle
++ * @rev: Consumer handle to free
++ *
++ * Releases a previously allocated consumer handle.
++ */
++void revocable_free(struct revocable *rev)
++{
++	kfree(rev);
++}
++EXPORT_SYMBOL_GPL(revocable_free);
++
++/**
++ * revocable_try_access - Attempt to access a provider's resource
++ * @rev: Consumer handle
++ * @idx: Pointer to store SRCU index for later release
++ *
++ * Attempts to access the provider's resource. If successful, stores an SRCU
++ * index in @idx that must later be passed to revocable_withdraw_access().
++ * Returns the resource pointer if access succeeds, NULL if the resource
++ * has been revoked.
++ *
++ * The caller must be prepared to handle NULL returns if revocation occurs
++ * between the call and actual resource use.
++ */
++void *revocable_try_access(struct revocable *rev, int *idx)
++{
++	void *resource;
++
++	if (!rev || !rev->provider)
++		return NULL;
++
++	*idx = srcu_read_lock(&revocable_srcu);
++	resource = srcu_dereference(rev->provider->resource, &revocable_srcu);
++
++	return resource;
++}
++EXPORT_SYMBOL_GPL(revocable_try_access);
++
++/**
++ * revocable_withdraw_access - Release SRCU read lock from revocable_try_access
++ * @rev: Consumer handle
++ * @idx: SRCU index from revocable_try_access()
++ *
++ * Must be called to release the SRCU read lock acquired by revocable_try_access().
++ */
++void revocable_withdraw_access(struct revocable *rev, int idx)
++{
++	srcu_read_unlock(&revocable_srcu, idx);
++}
++EXPORT_SYMBOL_GPL(revocable_withdraw_access);
+diff --git a/include/linux/revocable.h b/include/linux/revocable.h
+new file mode 100644
+index 000000000000..0484e74ddc7a
+--- /dev/null
++++ b/include/linux/revocable.h
+@@ -0,0 +1,69 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Revocable Resource Management
++ *
++ * Copyright 2025 Google LLC
++ */
++
++#ifndef __LINUX_REVOCABLE_H
++#define __LINUX_REVOCABLE_H
++
++#include <linux/types.h>
++
++struct device;
++
++/**
++ * struct revocable_provider - Handle for a resource being provided
++ * @resource: Pointer to the managed resource
++ */
++struct revocable_provider {
++	void *resource;
++};
++
++/**
++ * struct revocable - Handle for consuming a revocable resource
++ * @provider: Pointer to the provider
++ */
++struct revocable {
++	struct revocable_provider *provider;
++};
++
++/* Provider API */
++struct revocable_provider *revocable_provider_alloc(void *resource);
++struct revocable_provider *devm_revocable_provider_alloc(struct device *dev,
++							 void *resource);
++void revocable_provider_revoke(struct revocable_provider *provider);
++
++/* Consumer API */
++struct revocable *revocable_alloc(struct revocable_provider *provider);
++void revocable_free(struct revocable *rev);
++void *revocable_try_access(struct revocable *rev, int *idx);
++void revocable_withdraw_access(struct revocable *rev, int idx);
++
++/**
++ * REVOCABLE_TRY_ACCESS_WITH - Convenience macro for revocable access
++ * @rev: Consumer handle
++ * @resource: Variable to store resource pointer
++ * @code: Code to execute within access scope
++ *
++ * Automatically handles the access/withdraw cycle for accessing a
++ * revocable resource. The @resource variable is set to the provider's
++ * resource pointer or NULL if revoked.
++ *
++ * Example:
++ *   REVOCABLE_TRY_ACCESS_WITH(rev, myres) {
++ *       if (myres)
++ *           do_something_with(myres);
++ *   }
++ */
++#define REVOCABLE_TRY_ACCESS_WITH(rev, resource) \
++	({ \
++		int __idx; \
++		void *resource = revocable_try_access(rev, &__idx); \
++		(void)(__(&resource)); \
++		if (true) { \
++			__revocable_try_access_scoped_cleanup(__idx, rev); \
++		} \
++	})
++
++#endif /* __LINUX_REVOCABLE_H */
