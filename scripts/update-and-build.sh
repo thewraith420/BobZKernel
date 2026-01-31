@@ -97,6 +97,17 @@ echo -e "${BLUE}═══ Step 4/7: Verifying Patches ═══${NC}"
 echo -e "${GREEN}✓ Patches verified${NC}"
 echo ""
 
+# Step 4.5: Apply Revocable Resource Management patch
+echo -e "${BLUE}═══ Applying Revocable Resource Management ═══${NC}"
+cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+if patch -p1 --dry-run < "$BASE_DIR/patches/0001-revocable-resource-management.patch" > /dev/null 2>&1; then
+    patch -p1 < "$BASE_DIR/patches/0001-revocable-resource-management.patch"
+    echo -e "${GREEN}✓ Revocable Resource Management applied${NC}"
+else
+    echo -e "${YELLOW}⚠ Revocable patch already applied or conflicts detected - skipping${NC}"
+fi
+echo ""
+
 # Step 5: Apply config and build
 echo -e "${BLUE}═══ Step 5/7: Building Kernel ═══${NC}"
 cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
