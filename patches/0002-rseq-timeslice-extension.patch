@@ -81,10 +81,29 @@ index 7177436f0f9e..a03beb277f90 100644
  #define SYSCALL_WORK_EXIT	(SYSCALL_WORK_SYSCALL_TRACEPOINT |	\
  				 SYSCALL_WORK_SYSCALL_TRACE |		\
 diff --git a/include/linux/rseq.h b/include/linux/rseq.h
-index 69553e7c14c1..528663e5a83a 100644
+index 69553e7c14c1..09995ddddbf4 100644
 --- a/include/linux/rseq.h
 +++ b/include/linux/rseq.h
-@@ -133,4 +133,15 @@ static inline void rseq_syscall(struct pt_regs *regs)
+@@ -57,6 +57,18 @@ static inline void rseq_preempt(struct task_struct *t)
+ {
+ 	__set_bit(RSEQ_EVENT_PREEMPT_BIT, &t->rseq_event_mask);
+ 	rseq_set_notify_resume(t);
++
++#ifdef CONFIG_RSEQ_SLICE_EXTENSION
++	/*
++	 * Clear granted state when task is scheduled out to prevent stale
++	 * grants from being preserved across schedule cycles.
++	 * This will be cleared in userspace by the notify_resume handler.
++	 */
++	if (t->rseq_slice.state.granted) {
++		t->rseq_slice.state.granted = 0;
++		/* Userspace will be updated when task resumes via notify_resume */
++	}
++#endif
+ }
+ 
+ /* rseq_migrate() requires preemption to be disabled. */
+@@ -133,4 +145,15 @@ static inline void rseq_syscall(struct pt_regs *regs)
  
  #endif
  
@@ -419,7 +438,7 @@ index 66e6ba7fa80c..ad0c4a647a8c 100644
  	if (work & (SYSCALL_WORK_SYSCALL_TRACE | SYSCALL_WORK_SYSCALL_EMU)) {
  		ret = ptrace_report_syscall_entry(regs);
 diff --git a/kernel/rseq.c b/kernel/rseq.c
-index 2452b7366b00..f5d47461275a 100644
+index 2452b7366b00..356513220af0 100644
 --- a/kernel/rseq.c
 +++ b/kernel/rseq.c
 @@ -14,6 +14,10 @@
@@ -433,7 +452,24 @@ index 2452b7366b00..f5d47461275a 100644
  #include <asm/ptrace.h>
  
  #define CREATE_TRACE_POINTS
-@@ -476,6 +480,7 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -184,6 +188,16 @@ static int rseq_update_cpu_node_id(struct task_struct *t)
+ 	 * need to be conditionally updated only if
+ 	 * t->rseq_len != ORIG_RSEQ_SIZE.
+ 	 */
++
++#ifdef CONFIG_RSEQ_SLICE_EXTENSION
++	/*
++	 * Clear userspace slice_ctrl when task is rescheduled.
++	 * This ensures stale grants don't persist across schedule cycles.
++	 * Unconditional clear is cheaper than conditional check.
++	 */
++	unsafe_put_user(0U, &rseq->slice_ctrl.all, efault_end);
++#endif
++
+ 	user_write_access_end();
+ 	trace_rseq_update(t);
+ 	return 0;
+@@ -476,6 +490,7 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  {
  	int ret;
  	u64 rseq_cs;
@@ -441,7 +477,7 @@ index 2452b7366b00..f5d47461275a 100644
  
  	if (flags & RSEQ_FLAG_UNREGISTER) {
  		if (flags & ~RSEQ_FLAG_UNREGISTER)
-@@ -531,6 +536,9 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -531,6 +546,9 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  	if (!access_ok(rseq, rseq_len))
  		return -EFAULT;
  
@@ -451,7 +487,7 @@ index 2452b7366b00..f5d47461275a 100644
  	/*
  	 * If the rseq_cs pointer is non-NULL on registration, clear it to
  	 * avoid a potential segfault on return to user-space. The proper thing
-@@ -543,6 +551,12 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -543,6 +561,12 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  	if (rseq_cs && clear_rseq_cs(rseq))
  		return -EFAULT;
  
@@ -464,7 +500,7 @@ index 2452b7366b00..f5d47461275a 100644
  #ifdef CONFIG_DEBUG_RSEQ
  	/*
  	 * Initialize the in-kernel rseq fields copy for validation of
-@@ -571,3 +585,245 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -571,3 +595,245 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  
  	return 0;
  }
