@@ -32,42 +32,169 @@ The RSEQ Time Slice Extension is a new kernel feature being developed by Thomas 
 ## Backport Status
 
 **Branch**: `rseq-timeslice` (experimental)
+**Patch File**: `patches/0002-rseq-timeslice-extension.patch`
 
-### Initial Cherry-Pick Attempt
+### Manual Backport Progress
 
-Attempted to cherry-pick all 11 commits from tglx/rseq/slice:
+Given the significant API differences between 6.18 and 6.19, a manual backport approach was taken:
 
-```bash
-git cherry-pick b545599f7215..baecc27d71da
-```
+**Completed Patches**:
+- ✅ **Patch 1/11** (b545599f7215): Add fields and constants for time slice extension
+  - Adapted `scoped_user_write_access()` to `put_user()` API
+  - Created `include/linux/rseq_types.h` with slice structures
+  - Added CONFIG_RSEQ_SLICE_EXTENSION to Kconfig
+  - Added documentation (Documentation/userspace-api/rseq.rst)
 
-**Results**:
-- ✅ **Patch 1/11**: Applied successfully
-- ✅ **Patch 2/11**: Applied with minor conflict (include/linux/rseq_entry.h modify/delete resolved)
-- ⚠️ **Patch 3/11**: Conflict in kernel/rseq.c (stopped here)
-- ❓ **Patches 4-11**: Not attempted yet
+- ✅ **Patch 2/11** (4562c1e5576d): Provide static branch for time slice extensions
+  - Created minimal `include/linux/rseq_entry.h` (6.18 doesn't have full RSEQ infrastructure)
+  - Added `rseq_slice_ext=` kernel parameter support
+  - Added DEFINE_STATIC_KEY_TRUE(rseq_slice_extension_key)
 
-### Detailed Analysis (Second Attempt)
+- ⏭️ **Patch 3/11** (1d9c474c7a05): Add statistics for time slice extensions
+  - **SKIPPED** - CONFIG_RSEQ_STATS infrastructure doesn't exist in 6.18
+  - Not essential for core functionality
 
-Individual patch cherry-pick revealed deeper API incompatibilities:
+- ✅ **Patch 4/11** (b7b27be2636a): Add prctl() to enable time slice extensions
+  - Added PR_RSEQ_SLICE_EXTENSION prctl command
+  - Added `rseq_slice` field to task_struct (6.18 uses flat structure, not rseq_data)
+  - Adapted to use `current->rseq` instead of `current->rseq.usrptr`
+  - Fixed rseq_slice_state structure (u16 with enabled/granted, not u32)
 
-**Patch 1/11 Conflicts Found**:
-1. ✅ `include/linux/rseq_types.h` - Modify/delete (resolved by accepting file)
-2. ✅ `init/Kconfig` - Added three new config options (resolved cleanly)
-3. ⚠️ **`kernel/rseq.c` - Critical API Mismatch**:
-   - **6.19 code uses**: `scoped_user_write_access()` macro with cleanup semantics
-   - **6.18 has**: Traditional `access_ok()` + manual `put_user()` approach
-   - **Impact**: Core RSEQ registration flow is fundamentally different
-   - **Required**: Manual API translation, not simple conflict resolution
+**Remaining Patches (TODO)**:
+- ❓ **Patch 5/11** (9d8bb27ebab0): Implement sys_rseq_slice_yield()
+  - New syscall implementation needed
+  - Syscall number allocation required
 
-**Conclusion**: This backport requires significant manual adaptation of each patch to 6.18 APIs, not just conflict resolution.
+- ❓ **Patch 6/11** (6e87390567d1): Implement syscall entry work for time slice extensions
+  - Entry/exit path modifications
+
+- ❓ **Patch 7/11** (c3b2c0b3d780): Implement time slice extension enforcement timer
+  - Timer infrastructure for enforcement
+
+- ❓ **Patch 8/11** (4287abafd9b6): Reset slice extension when scheduled
+  - Scheduler integration
+
+- ❓ **Patch 9/11** (04c29fb4e2ed): Implement rseq_grant_slice_extension()
+  - Core granting logic
+
+- ❓ **Patch 10/11** (5af65b6241f7): entry: Hook up rseq time slice extension
+  - Entry code integration
+
+- ❓ **Patch 11/11** (baecc27d71da): selftests/rseq: Implement time slice extension test
+  - Testing infrastructure
+
+### Current Status Summary
+
+**Patches Backported**: 3 out of 11 (patches 1, 2, 4)
+**Functionality Level**: ~27% - Basic infrastructure only, no runtime functionality yet
+**Build Integration**: Patch applied automatically on rseq-timeslice branch
+**Compilation Status**: Not tested - remaining patches needed for complete feature
 
 ### Key Differences Between 6.18 and 6.19
 
 1. **RSEQ Infrastructure**: 6.19 has enhanced RSEQ support compared to 6.18
-2. **Header Files**: `include/linux/rseq_entry.h` created by patch 2
+2. **Header Files**: `include/linux/rseq_entry.h` doesn't exist in 6.18
 3. **Scheduler Changes**: Core scheduler differences will cause conflicts
 4. **Syscall Numbers**: New syscall #471 needs to be added to syscall tables
+
+### Detailed API Adaptations for 6.18
+
+#### 1. User Space Access API Changes
+
+**6.19 Upstream Code**:
+```c
+scoped_user_write_access(&rseq->flags, &rseq->slice_ctrl.all, efault) {
+    unsafe_put_user(rseqfl, &rseq->flags, efault);
+    unsafe_put_user(0U, &rseq->slice_ctrl.all, efault);
+}
+```
+
+**6.18 Adapted Code**:
+```c
+if (put_user(rseqfl, &rseq->flags))
+    return -EFAULT;
+if (put_user(0U, &rseq->slice_ctrl.all))
+    return -EFAULT;
+```
+
+**Rationale**: 6.18 doesn't have the `scoped_user_write_access()` macro which provides automatic cleanup semantics. Reverted to traditional `put_user()` approach.
+
+#### 2. Task Structure Differences
+
+**6.19 Structure** (struct rseq_data):
+```c
+struct rseq_data {
+    struct rseq __user *usrptr;
+    u32 len;
+    u32 sig;
+    struct rseq_event event;
+    struct rseq_ids ids;
+    struct rseq_slice slice;
+};
+```
+
+**6.18 Adapted** (direct fields in task_struct):
+```c
+struct task_struct {
+    ...
+    struct rseq __user *rseq;      // Direct pointer, not in rseq_data
+    u32 rseq_len;
+    u32 rseq_sig;
+    struct rseq_slice rseq_slice;  // Added field for slice extension
+    ...
+};
+```
+
+**Code Adaptations**:
+- `current->rseq.usrptr` → `current->rseq`
+- `current->rseq.slice` → `current->rseq_slice`
+- `current->rseq.len` → `current->rseq_len`
+
+#### 3. RSEQ Slice State Structure
+
+**Initial Incorrect Structure** (from early patch inspection):
+```c
+union rseq_slice_state {
+    u32 all;
+    struct {
+        u8 request;
+        u8 granted;
+        u16 __reserved;
+    };
+};
+```
+
+**Corrected Structure** (actual 6.19 definition):
+```c
+union rseq_slice_state {
+    u16 state;
+    struct {
+        u8 enabled;   // Not "request"
+        u8 granted;
+    };
+};
+```
+
+#### 4. Minimal Header Creation
+
+Created minimal `include/linux/rseq_entry.h` with only what's needed for timeslice:
+
+```c
+#ifdef CONFIG_RSEQ_SLICE_EXTENSION
+DECLARE_STATIC_KEY_TRUE(rseq_slice_extension_key);
+
+static __always_inline bool rseq_slice_extension_enabled(void)
+{
+    return static_branch_likely(&rseq_slice_extension_key);
+}
+#endif
+```
+
+**Omitted from 6.18 backport** (exists in full 6.19 version):
+- `struct rseq_stats` - Requires CONFIG_RSEQ_STATS infrastructure
+- `rseq_exit_to_user_mode_restart()` - Requires GENERIC_ENTRY changes
+- `rseq_update_user_cs()` - Complex fast-path RSEQ logic
+- Event tracking infrastructure - Part of broader 6.19 RSEQ rewrite
 
 ### Files Modified (from patch series)
 
