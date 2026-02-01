@@ -160,6 +160,20 @@ else
 fi
 echo ""
 
+# Step 4.7: Apply RSEQ Time Slice Extension patch (experimental - rseq-timeslice branch only)
+BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
+if [ "$BRANCH" = "rseq-timeslice" ]; then
+    echo -e "${BLUE}═══ Applying RSEQ Time Slice Extension ═══${NC}"
+    cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+    if patch -p1 --dry-run < "$BASE_DIR/patches/0002-rseq-timeslice-extension.patch" > /dev/null 2>&1; then
+        patch -p1 < "$BASE_DIR/patches/0002-rseq-timeslice-extension.patch"
+        echo -e "${GREEN}✓ RSEQ Time Slice Extension applied${NC}"
+    else
+        echo -e "${YELLOW}⚠ RSEQ patch already applied or conflicts detected - skipping${NC}"
+    fi
+    echo ""
+fi
+
 # Step 5: Apply config and build
 echo -e "${BLUE}═══ Step 5/7: Building Kernel ═══${NC}"
 cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"

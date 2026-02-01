@@ -1,0 +1,414 @@
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index 95a7d5bb96c2..bf6f8f5a2baf 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -6494,6 +6494,11 @@
+ 
+ 	rootflags=	[KNL] Set root filesystem mount option string
+ 
++	rseq_slice_ext= [KNL] RSEQ based time slice extension
++			Format: boolean
++			Control enablement of RSEQ based time slice extension.
++			Default is 'on'.
++
+ 	initramfs_options= [KNL]
+                         Specify mount options for for the initramfs mount.
+ 
+diff --git a/Documentation/userspace-api/index.rst b/Documentation/userspace-api/index.rst
+index b8c73be4fb11..fdb4e77a05c8 100644
+--- a/Documentation/userspace-api/index.rst
++++ b/Documentation/userspace-api/index.rst
+@@ -21,6 +21,7 @@ System calls
+    ebpf/index
+    ioctl/index
+    mseal
++   rseq
+ 
+ Security-related interfaces
+ ===========================
+diff --git a/include/linux/rseq.h b/include/linux/rseq.h
+index 69553e7c14c1..e232b9a50abe 100644
+--- a/include/linux/rseq.h
++++ b/include/linux/rseq.h
+@@ -133,4 +133,13 @@ static inline void rseq_syscall(struct pt_regs *regs)
+ 
+ #endif
+ 
++#ifdef CONFIG_RSEQ_SLICE_EXTENSION
++int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3);
++#else /* CONFIG_RSEQ_SLICE_EXTENSION */
++static inline int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3)
++{
++	return -ENOTSUPP;
++}
++#endif /* !CONFIG_RSEQ_SLICE_EXTENSION */
++
+ #endif /* _LINUX_RSEQ_H */
+diff --git a/include/linux/rseq_types.h b/include/linux/rseq_types.h
+index cb5e0c620a33..8575f0cf7772 100644
+--- a/include/linux/rseq_types.h
++++ b/include/linux/rseq_types.h
+@@ -9,51 +9,39 @@
+ #include <linux/atomic.h>
+ 
+ /**
+- * union rseq_slice_state - Time slice extension state
+- * @all:		Combined 32-bit value for atomic operations
+- * @request:		User-space request counter
+- * @granted:		Kernel granted counter
++ * union rseq_slice_state - Status information for rseq time slice extension
++ * @state:		Compound to access the overall state
++ * @enabled:		Time slice extension is enabled for the task
++ * @granted:		Time slice extension was granted to the task
+  */
+ union rseq_slice_state {
+-	u32		all;
++	u16		state;
+ 	struct {
+-		u8	request;
++		u8	enabled;
+ 		u8	granted;
+-		u16	__reserved;
+ 	};
+ };
+ 
+ /**
+- * struct rseq_slice - Per-task time slice extension tracking
+- * @state:		Current state of time slice extension
+- * @armed:		Enforcement timer armed flag
+- * @pending:		Pending extension request flag
++ * struct rseq_slice - Status information for rseq time slice extension
++ * @state:		Time slice extension state
+  */
+ struct rseq_slice {
+ 	union rseq_slice_state	state;
+-	unsigned int		armed	: 1,
+-				pending	: 1;
+ };
+ 
+ /**
+- * struct rseq_data - Per-task RSEQ data
+- * @lock:		Protects concurrent modifications
+- * @refcount:		Reference count
+- * @rseq:		Pointer to user-space RSEQ area
+- * @rseq_len:		Length of RSEQ area
+- * @rseq_sig:		RSEQ signature
++ * struct rseq_slice_data - Minimal per-task RSEQ slice data for 6.18 backport
+  * @slice:		Time slice extension tracking
++ *
++ * Note: 6.18 stores rseq pointer directly in task_struct, not in rseq_data.
++ * This structure is only used for the slice extension state.
+  */
+-struct rseq_data {
+-	struct mutex		lock;
+-	struct kref		refcount;
+-	struct rseq __user	*rseq;
+-	u32			rseq_len;
+-	u32			rseq_sig;
+ #ifdef CONFIG_RSEQ_SLICE_EXTENSION
++struct rseq_slice_data {
+ 	struct rseq_slice	slice;
+-#endif
+ };
++#endif
+ 
+ #endif /* CONFIG_RSEQ */
+ 
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 5809513cf54b..b54ce51ef1ef 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -42,6 +42,7 @@
+ #include <linux/posix-timers_types.h>
+ #include <linux/restart_block.h>
+ #include <uapi/linux/rseq.h>
++#include <linux/rseq_types.h>
+ #include <linux/seqlock_types.h>
+ #include <linux/kcsan.h>
+ #include <linux/rv.h>
+@@ -1453,6 +1454,10 @@ struct task_struct {
+ 	 */
+ 	char				rseq_fields[sizeof(struct rseq)];
+ # endif
++# ifdef CONFIG_RSEQ_SLICE_EXTENSION
++	/* Time slice extension state */
++	struct rseq_slice		rseq_slice;
++# endif
+ #endif
+ 
+ #ifdef CONFIG_SCHED_MM_CID
+diff --git a/include/uapi/linux/prctl.h b/include/uapi/linux/prctl.h
+index 51c4e8c82b1e..79944b7ae50a 100644
+--- a/include/uapi/linux/prctl.h
++++ b/include/uapi/linux/prctl.h
+@@ -386,4 +386,14 @@ struct prctl_mm_map {
+ # define PR_FUTEX_HASH_SET_SLOTS	1
+ # define PR_FUTEX_HASH_GET_SLOTS	2
+ 
++/* RSEQ time slice extensions */
++#define PR_RSEQ_SLICE_EXTENSION			79
++# define PR_RSEQ_SLICE_EXTENSION_GET		1
++# define PR_RSEQ_SLICE_EXTENSION_SET		2
++/*
++ * Bits for RSEQ_SLICE_EXTENSION_GET/SET
++ * PR_RSEQ_SLICE_EXT_ENABLE:	Enable
++ */
++# define PR_RSEQ_SLICE_EXT_ENABLE		0x01
++
+ #endif /* _LINUX_PRCTL_H */
+diff --git a/include/uapi/linux/rseq.h b/include/uapi/linux/rseq.h
+index c233aae5eac9..f06abfe5075e 100644
+--- a/include/uapi/linux/rseq.h
++++ b/include/uapi/linux/rseq.h
+@@ -26,6 +26,11 @@ enum rseq_cs_flags_bit {
+ 	RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT	= 0,
+ 	RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT	= 1,
+ 	RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT	= 2,
++	/* (3) Intentional gap to put new bits into a separate byte */
++
++	/* User read only feature flags */
++	RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE_BIT	= 4,
++	RSEQ_CS_FLAG_SLICE_EXT_ENABLED_BIT	= 5,
+ };
+ 
+ enum rseq_cs_flags {
+@@ -35,6 +40,11 @@ enum rseq_cs_flags {
+ 		(1U << RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT),
+ 	RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE	=
+ 		(1U << RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT),
++
++	RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE	=
++		(1U << RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE_BIT),
++	RSEQ_CS_FLAG_SLICE_EXT_ENABLED		=
++		(1U << RSEQ_CS_FLAG_SLICE_EXT_ENABLED_BIT),
+ };
+ 
+ /*
+@@ -53,6 +63,27 @@ struct rseq_cs {
+ 	__u64 abort_ip;
+ } __attribute__((aligned(4 * sizeof(__u64))));
+ 
++/**
++ * rseq_slice_ctrl - Time slice extension control structure
++ * @all:	Compound value
++ * @request:	Request for a time slice extension
++ * @granted:	Granted time slice extension
++ *
++ * @request is set by user space and can be cleared by user space or kernel
++ * space.  @granted is set and cleared by the kernel and must only be read
++ * by user space.
++ */
++struct rseq_slice_ctrl {
++	union {
++		__u32		all;
++		struct {
++			__u8	request;
++			__u8	granted;
++			__u16	__reserved;
++		};
++	};
++};
++
+ /*
+  * struct rseq is aligned on 4 * 8 bytes to ensure it is always
+  * contained within a single cache-line.
+@@ -148,6 +179,12 @@ struct rseq {
+ 	 */
+ 	__u32 mm_cid;
+ 
++	/*
++	 * Time slice extension control structure. CPU local updates from
++	 * kernel and user space.
++	 */
++	struct rseq_slice_ctrl slice_ctrl;
++
+ 	/*
+ 	 * Flexible array member at end of structure, after last feature field.
+ 	 */
+diff --git a/init/Kconfig b/init/Kconfig
+index 5f55a077b669..40fb1600bd7b 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1956,6 +1956,43 @@ config RSEQ
+ 
+ 	  If unsure, say Y.
+ 
++config RSEQ_SLICE_EXTENSION
++	bool "Enable rseq-based time slice extension mechanism"
++	depends on RSEQ && HIGH_RES_TIMERS && GENERIC_ENTRY && HAVE_GENERIC_TIF_BITS
++	help
++	  Allows userspace to request a limited time slice extension when
++	  returning from an interrupt to user space via the RSEQ shared
++	  data ABI. If granted, that allows to complete a critical section,
++	  so that other threads are not stuck on a conflicted resource,
++	  while the task is scheduled out.
++
++	  If unsure, say N.
++
++config RSEQ_STATS
++	default n
++	bool "Enable lightweight statistics of restartable sequences" if EXPERT
++	depends on RSEQ && DEBUG_FS
++	help
++	  Enable lightweight counters which expose information about the
++	  frequency of RSEQ operations via debugfs. Mostly interesting for
++	  kernel debugging or performance analysis. While lightweight it's
++	  still adding code into the user/kernel mode transitions.
++
++	  If unsure, say N.
++
++config RSEQ_DEBUG_DEFAULT_ENABLE
++	default n
++	bool "Enable restartable sequences debug mode by default" if EXPERT
++	depends on RSEQ
++	help
++	  This enables the static branch for debug mode of restartable
++	  sequences.
++
++	  This also can be controlled on the kernel command line via the
++	  command line parameter "rseq_debug=0/1" and through debugfs.
++
++	  If unsure, say N.
++
+ config DEBUG_RSEQ
+ 	default n
+ 	bool "Enable debugging of rseq() system call" if EXPERT
+diff --git a/kernel/rseq.c b/kernel/rseq.c
+index 2452b7366b00..bfdd8d2617f2 100644
+--- a/kernel/rseq.c
++++ b/kernel/rseq.c
+@@ -14,6 +14,7 @@
+ #include <linux/rseq.h>
+ #include <linux/types.h>
+ #include <linux/ratelimit.h>
++#include <linux/prctl.h>
+ #include <asm/ptrace.h>
+ 
+ #define CREATE_TRACE_POINTS
+@@ -476,6 +477,7 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+ {
+ 	int ret;
+ 	u64 rseq_cs;
++	u32 rseqfl = 0;
+ 
+ 	if (flags & RSEQ_FLAG_UNREGISTER) {
+ 		if (flags & ~RSEQ_FLAG_UNREGISTER)
+@@ -531,6 +533,9 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+ 	if (!access_ok(rseq, rseq_len))
+ 		return -EFAULT;
+ 
++	if (IS_ENABLED(CONFIG_RSEQ_SLICE_EXTENSION))
++		rseqfl |= RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE;
++
+ 	/*
+ 	 * If the rseq_cs pointer is non-NULL on registration, clear it to
+ 	 * avoid a potential segfault on return to user-space. The proper thing
+@@ -543,6 +548,12 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+ 	if (rseq_cs && clear_rseq_cs(rseq))
+ 		return -EFAULT;
+ 
++	/* Initialize rseq flags and slice control */
++	if (put_user(rseqfl, &rseq->flags))
++		return -EFAULT;
++	if (put_user(0U, &rseq->slice_ctrl.all))
++		return -EFAULT;
++
+ #ifdef CONFIG_DEBUG_RSEQ
+ 	/*
+ 	 * Initialize the in-kernel rseq fields copy for validation of
+@@ -571,3 +582,71 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+ 
+ 	return 0;
+ }
++
++#ifdef CONFIG_RSEQ_SLICE_EXTENSION
++DEFINE_STATIC_KEY_TRUE(rseq_slice_extension_key);
++
++int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3)
++{
++	switch (arg2) {
++	case PR_RSEQ_SLICE_EXTENSION_GET:
++		if (arg3)
++			return -EINVAL;
++		return current->rseq_slice.state.enabled ? PR_RSEQ_SLICE_EXT_ENABLE : 0;
++
++	case PR_RSEQ_SLICE_EXTENSION_SET: {
++		u32 rflags, valid = RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE;
++		bool enable = !!(arg3 & PR_RSEQ_SLICE_EXT_ENABLE);
++
++		if (arg3 & ~PR_RSEQ_SLICE_EXT_ENABLE)
++			return -EINVAL;
++		if (!rseq_slice_extension_enabled())
++			return -ENOTSUPP;
++		if (!current->rseq)  /* Adapted for 6.18: uses current->rseq directly */
++			return -ENXIO;
++
++		/* No change? */
++		if (enable == !!current->rseq_slice.state.enabled)  /* Adapted for 6.18 */
++			return 0;
++
++		if (get_user(rflags, &current->rseq->flags))  /* Adapted for 6.18 */
++			goto die;
++
++		if (current->rseq_slice.state.enabled)  /* Adapted for 6.18 */
++			valid |= RSEQ_CS_FLAG_SLICE_EXT_ENABLED;
++
++		if ((rflags & valid) != valid)
++			goto die;
++
++		rflags &= ~RSEQ_CS_FLAG_SLICE_EXT_ENABLED;
++		rflags |= RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE;
++		if (enable)
++			rflags |= RSEQ_CS_FLAG_SLICE_EXT_ENABLED;
++
++		if (put_user(rflags, &current->rseq->flags))  /* Adapted for 6.18 */
++			goto die;
++
++		current->rseq_slice.state.enabled = enable;  /* Adapted for 6.18 */
++		return 0;
++	}
++	default:
++		return -EINVAL;
++	}
++die:
++	force_sig(SIGSEGV);
++	return -EFAULT;
++}
++
++static int __init rseq_slice_cmdline(char *str)
++{
++	bool on;
++
++	if (kstrtobool(str, &on))
++		return 0;
++
++	if (!on)
++		static_branch_disable(&rseq_slice_extension_key);
++	return 1;
++}
++__setup("rseq_slice_ext=", rseq_slice_cmdline);
++#endif /* CONFIG_RSEQ_SLICE_EXTENSION */
+diff --git a/kernel/sys.c b/kernel/sys.c
+index 8b58eece4e58..af71987df81c 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -53,6 +53,7 @@
+ #include <linux/time_namespace.h>
+ #include <linux/binfmts.h>
+ #include <linux/futex.h>
++#include <linux/rseq.h>
+ 
+ #include <linux/sched.h>
+ #include <linux/sched/autogroup.h>
+@@ -2868,6 +2869,11 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
+ 	case PR_FUTEX_HASH:
+ 		error = futex_hash_prctl(arg2, arg3, arg4);
+ 		break;
++	case PR_RSEQ_SLICE_EXTENSION:
++		if (arg4 || arg5)
++			return -EINVAL;
++		error = rseq_slice_extension_prctl(arg2, arg3);
++		break;
+ 	default:
+ 		trace_task_prctl_unknown(option, arg2, arg3, arg4, arg5);
+ 		error = -EINVAL;
