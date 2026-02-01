@@ -14,6 +14,27 @@ index 95a7d5bb96c2..bf6f8f5a2baf 100644
  	initramfs_options= [KNL]
                          Specify mount options for for the initramfs mount.
  
+diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
+index f3ee807b5d8b..1306f749282b 100644
+--- a/Documentation/admin-guide/sysctl/kernel.rst
++++ b/Documentation/admin-guide/sysctl/kernel.rst
+@@ -1229,6 +1229,16 @@ ROM/Flash boot loader. Maybe to tell it what to do after
+ rebooting. ???
+ 
+ 
++rseq_slice_extension_nsec
++==========================
++
++A task can request to delay its scheduling if it is in a critical section
++via the prctl(PR_RSEQ_SLICE_EXTENSION_SET) mechanism. This sets the maximum
++allowed extension in nanoseconds before scheduling of the task is enforced.
++Default value is 30000ns (30us). The possible range is 10000ns (10us) to
++50000ns (50us).
++
++
+ sched_energy_aware
+ ==================
+ 
 diff --git a/Documentation/userspace-api/index.rst b/Documentation/userspace-api/index.rst
 index b8c73be4fb11..fdb4e77a05c8 100644
 --- a/Documentation/userspace-api/index.rst
@@ -80,10 +101,10 @@ index 69553e7c14c1..528663e5a83a 100644
 +
  #endif /* _LINUX_RSEQ_H */
 diff --git a/include/linux/rseq_types.h b/include/linux/rseq_types.h
-index cb5e0c620a33..bf3cf1bdcf98 100644
+index cb5e0c620a33..7b6c9b08d32f 100644
 --- a/include/linux/rseq_types.h
 +++ b/include/linux/rseq_types.h
-@@ -9,51 +9,41 @@
+@@ -9,51 +9,43 @@
  #include <linux/atomic.h>
  
  /**
@@ -114,12 +135,14 @@ index cb5e0c620a33..bf3cf1bdcf98 100644
 - * @pending:		Pending extension request flag
 + * struct rseq_slice - Status information for rseq time slice extension
 + * @state:		Time slice extension state
++ * @expires:		The time when a grant expires
 + * @yielded:		Indicator for rseq_slice_yield()
   */
  struct rseq_slice {
  	union rseq_slice_state	state;
 -	unsigned int		armed	: 1,
 -				pending	: 1;
++	u64			expires;
 +	u8			yielded;
  };
  
@@ -396,18 +419,21 @@ index 66e6ba7fa80c..ad0c4a647a8c 100644
  	if (work & (SYSCALL_WORK_SYSCALL_TRACE | SYSCALL_WORK_SYSCALL_EMU)) {
  		ret = ptrace_report_syscall_entry(regs);
 diff --git a/kernel/rseq.c b/kernel/rseq.c
-index 2452b7366b00..9e286563d682 100644
+index 2452b7366b00..f5d47461275a 100644
 --- a/kernel/rseq.c
 +++ b/kernel/rseq.c
-@@ -14,6 +14,7 @@
+@@ -14,6 +14,10 @@
  #include <linux/rseq.h>
  #include <linux/types.h>
  #include <linux/ratelimit.h>
 +#include <linux/prctl.h>
++#include <linux/hrtimer.h>
++#include <linux/percpu.h>
++#include <linux/sysctl.h>
  #include <asm/ptrace.h>
  
  #define CREATE_TRACE_POINTS
-@@ -476,6 +477,7 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -476,6 +480,7 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  {
  	int ret;
  	u64 rseq_cs;
@@ -415,7 +441,7 @@ index 2452b7366b00..9e286563d682 100644
  
  	if (flags & RSEQ_FLAG_UNREGISTER) {
  		if (flags & ~RSEQ_FLAG_UNREGISTER)
-@@ -531,6 +533,9 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -531,6 +536,9 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  	if (!access_ok(rseq, rseq_len))
  		return -EFAULT;
  
@@ -425,7 +451,7 @@ index 2452b7366b00..9e286563d682 100644
  	/*
  	 * If the rseq_cs pointer is non-NULL on registration, clear it to
  	 * avoid a potential segfault on return to user-space. The proper thing
-@@ -543,6 +548,12 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -543,6 +551,12 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  	if (rseq_cs && clear_rseq_cs(rseq))
  		return -EFAULT;
  
@@ -438,13 +464,67 @@ index 2452b7366b00..9e286563d682 100644
  #ifdef CONFIG_DEBUG_RSEQ
  	/*
  	 * Initialize the in-kernel rseq fields copy for validation of
-@@ -571,3 +582,147 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -571,3 +585,245 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  
  	return 0;
  }
 +
 +#ifdef CONFIG_RSEQ_SLICE_EXTENSION
++struct slice_timer {
++	struct hrtimer	timer;
++	void		*cookie;
++};
++
++unsigned int rseq_slice_ext_nsecs __read_mostly = 30 * NSEC_PER_USEC;
++static DEFINE_PER_CPU(struct slice_timer, slice_timer);
 +DEFINE_STATIC_KEY_TRUE(rseq_slice_extension_key);
++
++/*
++ * When the timer expires and the task is still in user space, the return
++ * from interrupt will revoke the grant and schedule. If the task already
++ * entered the kernel via a syscall and the timer fires before the syscall
++ * work was able to cancel it, then depending on the preemption model this
++ * will either reschedule on return from interrupt or in the syscall work
++ * below.
++ *
++ * Adapted for 6.18: Uses current->rseq_slice not current->rseq.slice
++ */
++static enum hrtimer_restart rseq_slice_expired(struct hrtimer *tmr)
++{
++	struct slice_timer *st = container_of(tmr, struct slice_timer, timer);
++
++	/*
++	 * Validate that the task which armed the timer is still on the
++	 * CPU. It could have been scheduled out without canceling the
++	 * timer.
++	 */
++	if (st->cookie == current && current->rseq_slice.state.granted) {  /* Adapted for 6.18 */
++		set_tsk_need_resched(current);
++		set_preempt_need_resched();
++	}
++	return HRTIMER_NORESTART;
++}
++
++static void rseq_cancel_slice_extension_timer(void)
++{
++	struct slice_timer *st = this_cpu_ptr(&slice_timer);
++
++	/*
++	 * st->cookie can be safely read as preemption is disabled and the
++	 * timer is CPU local.
++	 *
++	 * As this is most probably the first expiring timer, the cancel is
++	 * expensive as it has to reprogram the hardware, but that's less
++	 * expensive than going through a full hrtimer_interrupt() cycle
++	 * for nothing.
++	 *
++	 * hrtimer_try_to_cancel() is sufficient here as the timer is CPU
++	 * local and once the hrtimer code disabled interrupts the timer
++	 * callback cannot be running.
++	 */
++	if (st->cookie == current)
++		hrtimer_try_to_cancel(&st->timer);
++}
 +
 +/*
 + * Invoked from syscall entry if a time slice extension was granted and the
@@ -474,10 +554,14 @@ index 2452b7366b00..9e286563d682 100644
 +		return;
 +
 +	/*
-+	 * Disable preemption to check and set need_resched atomically.
-+	 * In 6.18 we use traditional preempt_disable() instead of scoped_guard(preempt).
++	 * Disable preemption to stabilize per-CPU timer pointer and check/set
++	 * need_resched atomically. In 6.18 we use traditional preempt_disable()
++	 * instead of scoped_guard(preempt).
 +	 */
 +	preempt_disable();
++
++	/* Cancel the enforcement timer */
++	rseq_cancel_slice_extension_timer();
 +
 +	/* Set need_resched with interrupts disabled to avoid races */
 +	local_irq_save(flags);
@@ -573,6 +657,32 @@ index 2452b7366b00..9e286563d682 100644
 +	return yielded;
 +}
 +
++#ifdef CONFIG_SYSCTL
++static const unsigned int rseq_slice_ext_nsecs_min = 10 * NSEC_PER_USEC;
++static const unsigned int rseq_slice_ext_nsecs_max = 50 * NSEC_PER_USEC;
++
++static struct ctl_table rseq_slice_ext_sysctl[] = {
++	{
++		.procname	= "rseq_slice_extension_nsec",
++		.data		= &rseq_slice_ext_nsecs,
++		.maxlen		= sizeof(unsigned int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax,
++		.extra1		= (void *)&rseq_slice_ext_nsecs_min,
++		.extra2		= (void *)&rseq_slice_ext_nsecs_max,
++	},
++	{}
++};
++
++static void __init rseq_slice_sysctl_init(void)
++{
++	if (rseq_slice_extension_enabled())
++		register_sysctl("kernel", rseq_slice_ext_sysctl);
++}
++#else /* CONFIG_SYSCTL */
++static inline void rseq_slice_sysctl_init(void) { }
++#endif  /* !CONFIG_SYSCTL */
++
 +static int __init rseq_slice_cmdline(char *str)
 +{
 +	bool on;
@@ -585,6 +695,20 @@ index 2452b7366b00..9e286563d682 100644
 +	return 1;
 +}
 +__setup("rseq_slice_ext=", rseq_slice_cmdline);
++
++static int __init rseq_slice_init(void)
++{
++	unsigned int cpu;
++
++	for_each_possible_cpu(cpu) {
++		struct slice_timer *st = per_cpu_ptr(&slice_timer, cpu);
++		hrtimer_init(&st->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED_HARD);
++		st->timer.function = rseq_slice_expired;
++	}
++	rseq_slice_sysctl_init();
++	return 0;
++}
++device_initcall(rseq_slice_init);
 +#endif /* CONFIG_RSEQ_SLICE_EXTENSION */
 diff --git a/kernel/sys.c b/kernel/sys.c
 index 8b58eece4e58..af71987df81c 100644
