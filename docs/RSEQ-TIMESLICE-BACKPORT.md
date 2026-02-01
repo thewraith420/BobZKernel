@@ -47,6 +47,21 @@ git cherry-pick b545599f7215..baecc27d71da
 - ⚠️ **Patch 3/11**: Conflict in kernel/rseq.c (stopped here)
 - ❓ **Patches 4-11**: Not attempted yet
 
+### Detailed Analysis (Second Attempt)
+
+Individual patch cherry-pick revealed deeper API incompatibilities:
+
+**Patch 1/11 Conflicts Found**:
+1. ✅ `include/linux/rseq_types.h` - Modify/delete (resolved by accepting file)
+2. ✅ `init/Kconfig` - Added three new config options (resolved cleanly)
+3. ⚠️ **`kernel/rseq.c` - Critical API Mismatch**:
+   - **6.19 code uses**: `scoped_user_write_access()` macro with cleanup semantics
+   - **6.18 has**: Traditional `access_ok()` + manual `put_user()` approach
+   - **Impact**: Core RSEQ registration flow is fundamentally different
+   - **Required**: Manual API translation, not simple conflict resolution
+
+**Conclusion**: This backport requires significant manual adaptation of each patch to 6.18 APIs, not just conflict resolution.
+
 ### Key Differences Between 6.18 and 6.19
 
 1. **RSEQ Infrastructure**: 6.19 has enhanced RSEQ support compared to 6.18
