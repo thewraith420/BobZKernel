@@ -26,6 +26,27 @@ index b8c73be4fb11..fdb4e77a05c8 100644
  
  Security-related interfaces
  ===========================
+diff --git a/arch/x86/entry/syscalls/syscall_32.tbl b/arch/x86/entry/syscalls/syscall_32.tbl
+index 4877e16da69a..f4b5b5daeaa7 100644
+--- a/arch/x86/entry/syscalls/syscall_32.tbl
++++ b/arch/x86/entry/syscalls/syscall_32.tbl
+@@ -475,3 +475,4 @@
+ 467	i386	open_tree_attr		sys_open_tree_attr
+ 468	i386	file_getattr		sys_file_getattr
+ 469	i386	file_setattr		sys_file_setattr
++470	i386	rseq_slice_yield	sys_rseq_slice_yield
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index ced2a1deecd7..7515c2b49e32 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -394,6 +394,7 @@
+ 467	common	open_tree_attr		sys_open_tree_attr
+ 468	common	file_getattr		sys_file_getattr
+ 469	common	file_setattr		sys_file_setattr
++470	common	rseq_slice_yield	sys_rseq_slice_yield
+ 
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
 diff --git a/include/linux/rseq.h b/include/linux/rseq.h
 index 69553e7c14c1..e232b9a50abe 100644
 --- a/include/linux/rseq.h
@@ -45,10 +66,10 @@ index 69553e7c14c1..e232b9a50abe 100644
 +
  #endif /* _LINUX_RSEQ_H */
 diff --git a/include/linux/rseq_types.h b/include/linux/rseq_types.h
-index cb5e0c620a33..8575f0cf7772 100644
+index cb5e0c620a33..bf3cf1bdcf98 100644
 --- a/include/linux/rseq_types.h
 +++ b/include/linux/rseq_types.h
-@@ -9,51 +9,39 @@
+@@ -9,51 +9,41 @@
  #include <linux/atomic.h>
  
  /**
@@ -79,11 +100,13 @@ index cb5e0c620a33..8575f0cf7772 100644
 - * @pending:		Pending extension request flag
 + * struct rseq_slice - Status information for rseq time slice extension
 + * @state:		Time slice extension state
++ * @yielded:		Indicator for rseq_slice_yield()
   */
  struct rseq_slice {
  	union rseq_slice_state	state;
 -	unsigned int		armed	: 1,
 -				pending	: 1;
++	u8			yielded;
  };
  
  /**
@@ -137,6 +160,35 @@ index 5809513cf54b..b54ce51ef1ef 100644
  #endif
  
  #ifdef CONFIG_SCHED_MM_CID
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index 66c06fcdfe19..3f904c87d134 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -957,6 +957,7 @@ asmlinkage long sys_statx(int dfd, const char __user *path, unsigned flags,
+ 			  unsigned mask, struct statx __user *buffer);
+ asmlinkage long sys_rseq(struct rseq __user *rseq, uint32_t rseq_len,
+ 			 int flags, uint32_t sig);
++asmlinkage long sys_rseq_slice_yield(void);
+ asmlinkage long sys_open_tree(int dfd, const char __user *path, unsigned flags);
+ asmlinkage long sys_open_tree_attr(int dfd, const char __user *path,
+ 				   unsigned flags,
+diff --git a/include/uapi/asm-generic/unistd.h b/include/uapi/asm-generic/unistd.h
+index 04e0077fb4c9..6fbdb76fb890 100644
+--- a/include/uapi/asm-generic/unistd.h
++++ b/include/uapi/asm-generic/unistd.h
+@@ -858,8 +858,11 @@ __SYSCALL(__NR_file_getattr, sys_file_getattr)
+ #define __NR_file_setattr 469
+ __SYSCALL(__NR_file_setattr, sys_file_setattr)
+ 
++#define __NR_rseq_slice_yield 470
++__SYSCALL(__NR_rseq_slice_yield, sys_rseq_slice_yield)
++
+ #undef __NR_syscalls
+-#define __NR_syscalls 470
++#define __NR_syscalls 471
+ 
+ /*
+  * 32 bit systems traditionally used different
 diff --git a/include/uapi/linux/prctl.h b/include/uapi/linux/prctl.h
 index 51c4e8c82b1e..79944b7ae50a 100644
 --- a/include/uapi/linux/prctl.h
@@ -274,7 +326,7 @@ index 5f55a077b669..40fb1600bd7b 100644
  	default n
  	bool "Enable debugging of rseq() system call" if EXPERT
 diff --git a/kernel/rseq.c b/kernel/rseq.c
-index 2452b7366b00..bfdd8d2617f2 100644
+index 2452b7366b00..13d24dee1921 100644
 --- a/kernel/rseq.c
 +++ b/kernel/rseq.c
 @@ -14,6 +14,7 @@
@@ -316,7 +368,7 @@ index 2452b7366b00..bfdd8d2617f2 100644
  #ifdef CONFIG_DEBUG_RSEQ
  	/*
  	 * Initialize the in-kernel rseq fields copy for validation of
-@@ -571,3 +582,71 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -571,3 +582,92 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  
  	return 0;
  }
@@ -375,6 +427,27 @@ index 2452b7366b00..bfdd8d2617f2 100644
 +	return -EFAULT;
 +}
 +
++/**
++ * sys_rseq_slice_yield - yield the current processor side effect free if a
++ *			  task granted with a time slice extension is done with
++ *			  the critical work before being forced out.
++ *
++ * Return: 1 if the task successfully yielded the CPU within the granted slice.
++ *         0 if the slice extension was either never granted or was revoked by
++ *	     going over the granted extension, using a syscall other than this one
++ *	     or being scheduled out earlier due to a subsequent interrupt.
++ *
++ * The syscall does not schedule because the syscall entry work immediately
++ * relinquishes the CPU and schedules if required.
++ */
++SYSCALL_DEFINE0(rseq_slice_yield)
++{
++	int yielded = !!current->rseq_slice.yielded;  /* Adapted for 6.18 */
++
++	current->rseq_slice.yielded = 0;  /* Adapted for 6.18 */
++	return yielded;
++}
++
 +static int __init rseq_slice_cmdline(char *str)
 +{
 +	bool on;
@@ -412,3 +485,15 @@ index 8b58eece4e58..af71987df81c 100644
  	default:
  		trace_task_prctl_unknown(option, arg2, arg3, arg4, arg5);
  		error = -EINVAL;
+diff --git a/kernel/sys_ni.c b/kernel/sys_ni.c
+index bf5d05c635ff..add3032da16f 100644
+--- a/kernel/sys_ni.c
++++ b/kernel/sys_ni.c
+@@ -390,6 +390,7 @@ COND_SYSCALL(setuid16);
+ 
+ /* restartable sequence */
+ COND_SYSCALL(rseq);
++COND_SYSCALL(rseq_slice_yield);
+ 
+ COND_SYSCALL(uretprobe);
+ COND_SYSCALL(uprobe);
