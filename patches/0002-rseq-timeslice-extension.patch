@@ -47,17 +47,31 @@ index ced2a1deecd7..7515c2b49e32 100644
  
  #
  # Due to a historical design error, certain syscalls are numbered differently
+diff --git a/include/linux/entry-common.h b/include/linux/entry-common.h
+index 7177436f0f9e..a03beb277f90 100644
+--- a/include/linux/entry-common.h
++++ b/include/linux/entry-common.h
+@@ -36,6 +36,7 @@
+ 				 SYSCALL_WORK_SYSCALL_EMU |		\
+ 				 SYSCALL_WORK_SYSCALL_AUDIT |		\
+ 				 SYSCALL_WORK_SYSCALL_USER_DISPATCH |	\
++				 SYSCALL_WORK_SYSCALL_RSEQ_SLICE |	\
+ 				 ARCH_SYSCALL_WORK_ENTER)
+ #define SYSCALL_WORK_EXIT	(SYSCALL_WORK_SYSCALL_TRACEPOINT |	\
+ 				 SYSCALL_WORK_SYSCALL_TRACE |		\
 diff --git a/include/linux/rseq.h b/include/linux/rseq.h
-index 69553e7c14c1..e232b9a50abe 100644
+index 69553e7c14c1..528663e5a83a 100644
 --- a/include/linux/rseq.h
 +++ b/include/linux/rseq.h
-@@ -133,4 +133,13 @@ static inline void rseq_syscall(struct pt_regs *regs)
+@@ -133,4 +133,15 @@ static inline void rseq_syscall(struct pt_regs *regs)
  
  #endif
  
 +#ifdef CONFIG_RSEQ_SLICE_EXTENSION
++void rseq_syscall_enter_work(long syscall);
 +int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3);
 +#else /* CONFIG_RSEQ_SLICE_EXTENSION */
++static inline void rseq_syscall_enter_work(long syscall) { }
 +static inline int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3)
 +{
 +	return -ENOTSUPP;
@@ -172,6 +186,35 @@ index 66c06fcdfe19..3f904c87d134 100644
  asmlinkage long sys_open_tree(int dfd, const char __user *path, unsigned flags);
  asmlinkage long sys_open_tree_attr(int dfd, const char __user *path,
  				   unsigned flags,
+diff --git a/include/linux/thread_info.h b/include/linux/thread_info.h
+index dd925d84fa46..e7b79a4e3c16 100644
+--- a/include/linux/thread_info.h
++++ b/include/linux/thread_info.h
+@@ -46,15 +46,17 @@ enum syscall_work_bit {
+ 	SYSCALL_WORK_BIT_SYSCALL_AUDIT,
+ 	SYSCALL_WORK_BIT_SYSCALL_USER_DISPATCH,
+ 	SYSCALL_WORK_BIT_SYSCALL_EXIT_TRAP,
++	SYSCALL_WORK_BIT_SYSCALL_RSEQ_SLICE,
+ };
+ 
+-#define SYSCALL_WORK_SECCOMP		BIT(SYSCALL_WORK_BIT_SECCOMP)
+-#define SYSCALL_WORK_SYSCALL_TRACEPOINT	BIT(SYSCALL_WORK_BIT_SYSCALL_TRACEPOINT)
+-#define SYSCALL_WORK_SYSCALL_TRACE	BIT(SYSCALL_WORK_BIT_SYSCALL_TRACE)
+-#define SYSCALL_WORK_SYSCALL_EMU	BIT(SYSCALL_WORK_BIT_SYSCALL_EMU)
+-#define SYSCALL_WORK_SYSCALL_AUDIT	BIT(SYSCALL_WORK_BIT_SYSCALL_AUDIT)
+-#define SYSCALL_WORK_SYSCALL_USER_DISPATCH BIT(SYSCALL_WORK_BIT_SYSCALL_USER_DISPATCH)
+-#define SYSCALL_WORK_SYSCALL_EXIT_TRAP	BIT(SYSCALL_WORK_BIT_SYSCALL_EXIT_TRAP)
++#define SYSCALL_WORK_SECCOMP			BIT(SYSCALL_WORK_BIT_SECCOMP)
++#define SYSCALL_WORK_SYSCALL_TRACEPOINT		BIT(SYSCALL_WORK_BIT_SYSCALL_TRACEPOINT)
++#define SYSCALL_WORK_SYSCALL_TRACE		BIT(SYSCALL_WORK_BIT_SYSCALL_TRACE)
++#define SYSCALL_WORK_SYSCALL_EMU		BIT(SYSCALL_WORK_BIT_SYSCALL_EMU)
++#define SYSCALL_WORK_SYSCALL_AUDIT		BIT(SYSCALL_WORK_BIT_SYSCALL_AUDIT)
++#define SYSCALL_WORK_SYSCALL_USER_DISPATCH	BIT(SYSCALL_WORK_BIT_SYSCALL_USER_DISPATCH)
++#define SYSCALL_WORK_SYSCALL_EXIT_TRAP		BIT(SYSCALL_WORK_BIT_SYSCALL_EXIT_TRAP)
++#define SYSCALL_WORK_SYSCALL_RSEQ_SLICE		BIT(SYSCALL_WORK_BIT_SYSCALL_RSEQ_SLICE)
+ #endif
+ 
+ #include <asm/thread_info.h>
 diff --git a/include/uapi/asm-generic/unistd.h b/include/uapi/asm-generic/unistd.h
 index 04e0077fb4c9..6fbdb76fb890 100644
 --- a/include/uapi/asm-generic/unistd.h
@@ -325,8 +368,35 @@ index 5f55a077b669..40fb1600bd7b 100644
  config DEBUG_RSEQ
  	default n
  	bool "Enable debugging of rseq() system call" if EXPERT
+diff --git a/kernel/entry/syscall-common.c b/kernel/entry/syscall-common.c
+index 66e6ba7fa80c..ad0c4a647a8c 100644
+--- a/kernel/entry/syscall-common.c
++++ b/kernel/entry/syscall-common.c
+@@ -2,6 +2,7 @@
+ 
+ #include <linux/audit.h>
+ #include <linux/entry-common.h>
++#include <linux/rseq.h>
+ #include "common.h"
+ 
+ #define CREATE_TRACE_POINTS
+@@ -32,6 +33,14 @@ long syscall_trace_enter(struct pt_regs *regs, long syscall,
+ 			return -1L;
+ 	}
+ 
++	/*
++	 * User space got a time slice extension granted and relinquishes
++	 * the CPU. The work stops the slice timer to avoid an extra round
++	 * through hrtimer_interrupt().
++	 */
++	if (work & SYSCALL_WORK_SYSCALL_RSEQ_SLICE)
++		rseq_syscall_enter_work(syscall);
++
+ 	/* Handle ptrace */
+ 	if (work & (SYSCALL_WORK_SYSCALL_TRACE | SYSCALL_WORK_SYSCALL_EMU)) {
+ 		ret = ptrace_report_syscall_entry(regs);
 diff --git a/kernel/rseq.c b/kernel/rseq.c
-index 2452b7366b00..13d24dee1921 100644
+index 2452b7366b00..9e286563d682 100644
 --- a/kernel/rseq.c
 +++ b/kernel/rseq.c
 @@ -14,6 +14,7 @@
@@ -368,13 +438,68 @@ index 2452b7366b00..13d24dee1921 100644
  #ifdef CONFIG_DEBUG_RSEQ
  	/*
  	 * Initialize the in-kernel rseq fields copy for validation of
-@@ -571,3 +582,92 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
+@@ -571,3 +582,147 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
  
  	return 0;
  }
 +
 +#ifdef CONFIG_RSEQ_SLICE_EXTENSION
 +DEFINE_STATIC_KEY_TRUE(rseq_slice_extension_key);
++
++/*
++ * Invoked from syscall entry if a time slice extension was granted and the
++ * kernel did not clear it before user space left the critical section.
++ *
++ * While the recommended way to relinquish the CPU side effect free is
++ * rseq_slice_yield(2), any syscall within a granted slice terminates the
++ * grant and immediately reschedules if required. This supports onion layer
++ * applications, where the code requesting the grant cannot control the
++ * code within the critical section.
++ *
++ * Adapted for 6.18: Simplified version without event tracking and scoped guards
++ */
++void rseq_syscall_enter_work(long syscall)
++{
++	struct task_struct *curr = current;
++	u8 granted = curr->rseq_slice.state.granted;  /* Adapted for 6.18 */
++	unsigned long flags;
++
++	clear_task_syscall_work(curr, SYSCALL_RSEQ_SLICE);
++
++	/*
++	 * The kernel might have raced, revoked the grant and updated
++	 * userspace, but kept the SLICE work set.
++	 */
++	if (!granted)
++		return;
++
++	/*
++	 * Disable preemption to check and set need_resched atomically.
++	 * In 6.18 we use traditional preempt_disable() instead of scoped_guard(preempt).
++	 */
++	preempt_disable();
++
++	/* Set need_resched with interrupts disabled to avoid races */
++	local_irq_save(flags);
++	set_tsk_need_resched(curr);
++	set_preempt_need_resched();
++	local_irq_restore(flags);
++
++	if (syscall == __NR_rseq_slice_yield) {
++		/* Update the yielded state for syscall return */
++		curr->rseq_slice.yielded = 1;  /* Adapted for 6.18 */
++	}
++
++	preempt_enable();
++
++	/* Reschedule on NONE/VOLUNTARY preemption models */
++	cond_resched();
++
++	/* Clear the grant in kernel state and user space */
++	curr->rseq_slice.state.granted = 0;  /* Adapted for 6.18 */
++	if (put_user(0U, &curr->rseq->slice_ctrl.all))  /* Adapted for 6.18 */
++		force_sig(SIGSEGV);
++}
 +
 +int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3)
 +{
