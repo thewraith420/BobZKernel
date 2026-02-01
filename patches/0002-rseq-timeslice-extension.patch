@@ -881,3 +881,45 @@ index bf5d05c635ff..add3032da16f 100644
  
  COND_SYSCALL(uretprobe);
  COND_SYSCALL(uprobe);
+diff --git a/kernel/entry/common.c b/kernel/entry/common.c
+index f62e1d1b2063..e03539333f34 100644
+--- a/kernel/entry/common.c
++++ b/kernel/entry/common.c
+@@ -6,11 +6,24 @@
+ #include <linux/jump_label.h>
+ #include <linux/kmsan.h>
+ #include <linux/livepatch.h>
++#include <linux/rseq_entry.h>
+ #include <linux/tick.h>
+ 
+ /* Workaround to allow gradual conversion of architecture code */
+ void __weak arch_do_signal_or_restart(struct pt_regs *regs) { }
+ 
++/*
++ * TIF work which might prevent a time slice extension from being granted.
++ * Exclude the need_resched bits as the extension is granted when
++ * need_resched is set.
++ */
++#ifdef CONFIG_PREEMPT_RT
++# define TIF_SLICE_EXT_SCHED	(_TIF_NEED_RESCHED_LAZY)
++#else
++# define TIF_SLICE_EXT_SCHED	(_TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY)
++#endif
++#define TIF_SLICE_EXT_DENY	(EXIT_TO_USER_MODE_WORK & ~TIF_SLICE_EXT_SCHED)
++
+ /**
+  * exit_to_user_mode_loop - do any pending work before leaving to user space
+  * @regs:	Pointer to pt_regs on entry stack
+@@ -27,8 +40,10 @@ __always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
+ 
+ 		local_irq_enable_exit_to_user(ti_work);
+ 
+-		if (ti_work & (_TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY))
+-			schedule();
++		if (ti_work & (_TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY)) {
++			if (!rseq_grant_slice_extension(ti_work & TIF_SLICE_EXT_DENY))
++				schedule();
++		}
+ 
+ 		if (ti_work & _TIF_UPROBE)
+ 			uprobe_notify_resume(regs);
