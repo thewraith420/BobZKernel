@@ -55,10 +55,29 @@ if [ -f "vmnet-only/smac_compat.c" ]; then
     echo -e "${GREEN}✓ vmnet smac_compat.c patched${NC}"
 fi
 
+# Determine compiler from kernel build config
+VMLINUX_BUILD_DIR="/lib/modules/$KERNEL_VERSION/build"
+VMLINUX_CONFIG="$VMLINUX_BUILD_DIR/.config"
+
+MAKE_FLAGS=()
+if [ -f "$VMLINUX_CONFIG" ] && grep -q "^CONFIG_CC_IS_CLANG=y" "$VMLINUX_CONFIG"; then
+    # Auto-detect LLVM version
+    if command -v clang-19 &> /dev/null; then
+        LLVM_VERSION="-19"
+    elif command -v clang-20 &> /dev/null; then
+        LLVM_VERSION="-20"
+    elif command -v clang-18 &> /dev/null; then
+        LLVM_VERSION="-18"
+    else
+        LLVM_VERSION=""  # Use system default clang
+    fi
+    MAKE_FLAGS+=("LLVM=${LLVM_VERSION}")
+fi
+
 # Build vmmon
 echo -e "${BLUE}Step 4: Building vmmon module...${NC}"
 cd vmmon-only
-make LLVM=1 > /dev/null 2>&1 && echo -e "${GREEN}✓ vmmon built${NC}" || {
+make "${MAKE_FLAGS[@]}" > /dev/null 2>&1 && echo -e "${GREEN}✓ vmmon built${NC}" || {
     echo -e "${RED}✗ vmmon build failed${NC}"
     exit 1
 }
@@ -67,7 +86,7 @@ cd ..
 # Build vmnet
 echo -e "${BLUE}Step 5: Building vmnet module...${NC}"
 cd vmnet-only
-make LLVM=1 > /dev/null 2>&1 && echo -e "${GREEN}✓ vmnet built${NC}" || {
+make "${MAKE_FLAGS[@]}" > /dev/null 2>&1 && echo -e "${GREEN}✓ vmnet built${NC}" || {
     echo -e "${RED}✗ vmnet build failed${NC}"
     exit 1
 }

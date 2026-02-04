@@ -195,8 +195,21 @@ fi
 cp "$CONFIG_SRC" .config
 echo -e "${BLUE}Config applied from $CONFIG_SRC${NC}"
 
+# Auto-detect LLVM version for olddefconfig
+if command -v clang-19 &> /dev/null; then
+    LLVM_VERSION="-19"
+elif command -v clang-20 &> /dev/null; then
+    LLVM_VERSION="-20"
+elif command -v clang-18 &> /dev/null; then
+    LLVM_VERSION="-18"
+else
+    LLVM_VERSION=""  # Use system default clang
+fi
+
+echo -e "${BLUE}Using LLVM version: ${LLVM_VERSION:-system default}${NC}"
+
 # Update config for new options
-yes "" | make LLVM=-20 olddefconfig 2>/dev/null || make LLVM=-20 olddefconfig
+yes "" | make LLVM=${LLVM_VERSION} olddefconfig 2>/dev/null || make LLVM=${LLVM_VERSION} olddefconfig
 
 # Save updated config back
 cp .config "$BASE_DIR/configs/.config-$KERNEL_VERSION.$(date +%Y%m%d)"

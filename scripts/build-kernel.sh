@@ -92,6 +92,19 @@ if [ "$BRANCH" = "pixel-slate" ]; then
 fi
 
 # Build kernel with LLVM (don't override LOCALVERSION - let config file define it)
+# Auto-detect LLVM version
+if command -v clang-19 &> /dev/null; then
+    LLVM_VERSION="-19"
+elif command -v clang-20 &> /dev/null; then
+    LLVM_VERSION="-20"
+elif command -v clang-18 &> /dev/null; then
+    LLVM_VERSION="-18"
+else
+    LLVM_VERSION=""  # Use system default clang
+fi
+
+echo -e "${BLUE}Using LLVM version: ${LLVM_VERSION:-system default}${NC}"
+
 # Set up log file
 LOG_FILE="$BASE_DIR/build-$KERNEL_VERSION-$(date +%Y%m%d-%H%M%S).log"
 
@@ -100,8 +113,9 @@ LOG_FILE="$BASE_DIR/build-$KERNEL_VERSION-$(date +%Y%m%d-%H%M%S).log"
     echo "Build started at $(date)"
     echo "Branch: $BRANCH"
     echo "Kernel Version: $KERNEL_VERSION"
+    echo "LLVM Version: ${LLVM_VERSION:-system default}"
     echo ""
-    make LLVM=-20 -j$(nproc)
+    make LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ -j$(nproc)
     echo ""
     echo "Build completed at $(date)"
 } 2>&1 | tee "$LOG_FILE"

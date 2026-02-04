@@ -42,6 +42,19 @@ if [ ! -f "arch/x86/boot/bzImage" ]; then
     exit 1
 fi
 
+# Auto-detect LLVM version
+if command -v clang-19 &> /dev/null; then
+    LLVM_VERSION="-19"
+elif command -v clang-20 &> /dev/null; then
+    LLVM_VERSION="-20"
+elif command -v clang-18 &> /dev/null; then
+    LLVM_VERSION="-18"
+else
+    LLVM_VERSION=""  # Use system default clang
+fi
+
+echo -e "${BLUE}Using LLVM version: ${LLVM_VERSION:-system default}${NC}"
+
 echo -e "${BLUE}Step 1: Patching DKMS sources for compatibility...${NC}"
 # Patch DKMS sources BEFORE installation to fix known API incompatibilities
 bash /home/bob/buildstuff/BobZKernel/scripts/patch-dkms-sources.sh
@@ -53,7 +66,7 @@ if [ -f /etc/kernel/postinst.d/dkms ]; then
     DKMS_HOOK_DISABLED=true
 fi
 
-make LLVM=-20 install
+make LLVM=${LLVM_VERSION} install
 
 # Re-enable DKMS hook
 if [ "$DKMS_HOOK_DISABLED" = true ]; then
@@ -61,9 +74,9 @@ if [ "$DKMS_HOOK_DISABLED" = true ]; then
 fi
 
 echo -e "${BLUE}Step 3: Installing modules...${NC}"
-make LLVM=-20 modules_install
+make LLVM=${LLVM_VERSION} modules_install
 
-KERNEL_VERSION=$(make LLVM=-20 kernelrelease)
+KERNEL_VERSION=$(make LLVM=${LLVM_VERSION} kernelrelease)
 
 echo -e "${BLUE}Step 4: Compressing modules with zstd...${NC}"
 find /lib/modules/$KERNEL_VERSION -name '*.ko' -exec zstd --rm -q -T0 {} \;
@@ -87,7 +100,7 @@ export HOSTCC=clang
 export HOSTCXX=clang++
 export HOSTAR=llvm-ar
 export HOSTLD=ld.lld
-export LLVM=-20
+export LLVM=${LLVM_VERSION}
 export LLVM_IAS=1
 
 # Get list of all installed DKMS modules (query DKMS directly for accurate names)
