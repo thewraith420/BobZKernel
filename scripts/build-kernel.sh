@@ -105,6 +105,15 @@ fi
 
 echo -e "${BLUE}Using LLVM version: ${LLVM_VERSION:-system default}${NC}"
 
+# Enable ccache if available
+if command -v ccache &> /dev/null; then
+    export CCACHE_DIR="$HOME/.cache/ccache"
+    echo -e "${BLUE}ccache enabled (cache dir: $CCACHE_DIR)${NC}"
+    USE_CCACHE="ccache"
+else
+    USE_CCACHE=""
+fi
+
 # Set up log file
 LOG_FILE="$BASE_DIR/build-$KERNEL_VERSION-$(date +%Y%m%d-%H%M%S).log"
 
@@ -114,8 +123,9 @@ LOG_FILE="$BASE_DIR/build-$KERNEL_VERSION-$(date +%Y%m%d-%H%M%S).log"
     echo "Branch: $BRANCH"
     echo "Kernel Version: $KERNEL_VERSION"
     echo "LLVM Version: ${LLVM_VERSION:-system default}"
+    echo "ccache: ${USE_CCACHE:-disabled}"
     echo ""
-    make LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ -j$(nproc)
+    make LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ CC="${USE_CCACHE} clang${LLVM_VERSION}" -j$(nproc)
     echo ""
     echo "Build completed at $(date)"
 } 2>&1 | tee "$LOG_FILE"
