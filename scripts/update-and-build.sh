@@ -208,8 +208,8 @@ fi
 
 echo -e "${BLUE}Using LLVM version: ${LLVM_VERSION:-system default}${NC}"
 
-# Update config for new options
-yes "" | make LLVM=${LLVM_VERSION} olddefconfig 2>/dev/null || make LLVM=${LLVM_VERSION} olddefconfig
+# Update config for new options (HOSTCC=gcc needed for glibc 2.41 compatibility)
+yes "" | make LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ olddefconfig 2>/dev/null || make LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ olddefconfig
 
 # Save updated config back
 cp .config "$BASE_DIR/configs/.config-$KERNEL_VERSION.$(date +%Y%m%d)"
