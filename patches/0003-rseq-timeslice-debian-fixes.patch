@@ -20,6 +20,8 @@ Fixes:
 - Missing RSEQ_CS_FLAG_SLICE_EXT_* flags in uapi/rseq.h
 - Missing struct rseq_slice_ctrl definition
 - Missing slice_ctrl field in struct rseq
+- Missing rseq_slice_extension_prctl() declaration in linux/rseq.h
+- Missing #ifdef CONFIG_RSEQ_SLICE_EXTENSION wrapper in kernel/sys.c
 
 diff --git a/include/linux/rseq_entry.h b/include/linux/rseq_entry.h
 index d99c40448f1b..531ca6acf973 100644
@@ -221,3 +223,40 @@ index c233aae5eac9..6afc219d1545 100644
  	/*
  	 * Flexible array member at end of structure, after last feature field.
  	 */
+diff --git a/include/linux/rseq.h b/include/linux/rseq.h
+index 5765c5213827..8f1c6d8a9c3e 100644
+--- a/include/linux/rseq.h
++++ b/include/linux/rseq.h
+@@ -119,6 +119,15 @@ static inline void rseq_execve(struct task_struct *t)
+
+ #endif
+
++#ifdef CONFIG_RSEQ_SLICE_EXTENSION
++extern int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3);
++#else
++static inline int rseq_slice_extension_prctl(unsigned long arg2, unsigned long arg3)
++{
++	return -ENOTSUPP;
++}
++#endif
++
+ #ifdef CONFIG_DEBUG_RSEQ
+
+ void rseq_syscall(struct pt_regs *regs);
+diff --git a/kernel/sys.c b/kernel/sys.c
+index af71987df81c..c3a7e8f12b45 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -2869,10 +2869,12 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
+ 	case PR_FUTEX_HASH:
+ 		error = futex_hash_prctl(arg2, arg3, arg4);
+ 		break;
++#ifdef CONFIG_RSEQ_SLICE_EXTENSION
+ 	case PR_RSEQ_SLICE_EXTENSION:
+ 		if (arg4 || arg5)
+ 			return -EINVAL;
+ 		error = rseq_slice_extension_prctl(arg2, arg3);
+ 		break;
++#endif
+ 	default:
+ 		trace_task_prctl_unknown(option, arg2, arg3, arg4, arg5);

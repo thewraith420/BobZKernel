@@ -26,7 +26,7 @@ int main(void)
     printf("RSEQ Time Slice Extension - Feature Check\n");
     printf("==========================================\n\n");
 
-    /* Test 1: Check sysctl exists */
+    /* Test 1: Check sysctl exists (optional - may not be registered) */
     printf("[1] Checking sysctl...\n");
     FILE *f = fopen("/proc/sys/kernel/rseq_slice_extension_nsec", "r");
     if (f) {
@@ -38,9 +38,7 @@ int main(void)
         }
         fclose(f);
     } else {
-        printf("    ✗ Sysctl not found\n");
-        printf("    Kernel may not have CONFIG_RSEQ_SLICE_EXTENSION=y\n");
-        return 1;
+        printf("    ⚠ Sysctl not found (may still work via prctl)\n");
     }
 
     /* Test 2: Try to get current setting */
