@@ -1,137 +1,76 @@
-# Important Git Commits
+# Git Commit History
+**Last Updated**: February 5, 2026 - 07:17 EST
 
 ## Current HEAD
 ```
-5a8d5af (HEAD -> rseq-timeslice) Revert Gemini build fixes - return to stable configuration
+2052b9f (HEAD -> rseq-timeslice) Add comprehensive build status: kernel boots successfully, sysctl fix ready for rebuild
 ```
 
-## Critical Commits (Recent to Older)
+## Recent Commits (Last 10)
 
-### Stable Configuration (CURRENT)
-```
-5a8d5af - Revert Gemini build fixes - return to stable configuration
-  Removed: 9999-gemini-build-fixes.patch
-  Removed: Gemini patch integration from build script
-  Reset: kernel/linux-6.18 source to clean state
-  
-0a04fad - Add scheduler vruntime field name fix patch and integrate into build workflow
-  Added: patches/0004-fix-scheduler-vruntime-field-names.patch
-  Modified: scripts/update-and-build.sh (added Step 4.8)
-  Targets: 3 compilation errors in kernel/sched/fair.c
-  
-9f1cf6e - Update RSEQ patch with prctl integration fixes
-  Modified: patches/0002-rseq-timeslice-extension.patch
-  Added: prctl(PR_RSEQ_SLICE_EXTENSION_SET) support
-  
-69485c9 - Fix objtool build in update-and-build.sh for glibc 2.41
-  Fixed: Debian glibc 2.41 compatibility issue
-  
-d940fcc - Add ccache support to kernel builds
-  Added: ccache detection and configuration
-  Enabled: Automatic caching of compiled objects
-  
-6321161 - Fix LLVM version auto-detection across all build scripts
-  Fixed: Proper LLVM-19 detection in all scripts
-```
+### February 5, 2026 - Build Success & Documentation
+**2052b9f** - Add comprehensive build status: kernel boots successfully, sysctl fix ready for rebuild
+- Created BUILD-STATUS-20260205.md with complete status
+- Documents successful kernel boot
+- Lists sysctl fix ready for rebuild
 
-## What Each Patch Does
+**9e59708** - Update fix-build-conflicts.sh with all build fixes
+- Added Fix #6: bore.c merge conflict removal  
+- Added Fix #7: revocable.c duplicate static removal
+- Added Fix #8: hrtimer_init → hrtimer_setup API update
+- Added Fix #9: register_sysctl → register_sysctl_init API update
+- **Total: 9 automated fixes in fix-build-conflicts.sh**
 
-### 0001-revocable-resource-management.patch
-- Adds revocable resource management infrastructure
-- 6 file modifications
-- Base dependency for RSEQ features
+### February 4, 2026 - Patch Management
+**5808e5f** - Remove corrupt patches 9004 and 9005
+- Deleted hand-edited scheduler vruntime patch (corrupt at line 74)
+- Deleted hand-edited migration_cost patch (corrupt at line 42)
+- Functionality moved to fix-build-conflicts.sh (Fixes #4 and #5)
 
-### 0002-rseq-timeslice-extension.patch  
-- **PRIMARY FEATURE**: RSEQ time slice extension
-- 21 file modifications, 937 lines
-- Adds:
-  - syscall 470: sys_rseq_slice_yield
-  - prctl PR_RSEQ_SLICE_EXTENSION_SET/GET
-  - /proc/sys/kernel/rseq_slice_extension_nsec sysctl
-  - SYSCALL_WORK_SYSCALL_RSEQ_SLICE entry work hook
-  - Timer-based slice enforcement
-  - Grant/deny state machine
+**88fa4ec** - Simplify conflict resolution
+- Rely on BORE auto-fix for fair.c comment
+- Focus on duplicate removal and vruntime field fixes
 
-### 0003-rseq-timeslice-debian-fixes.patch
-- Fixes for Debian glibc 2.41
-- 4 file modifications
-- Ensures compilation compatibility
+**719b125** - Integrate conflict resolution script into build workflow
+- Added fix-build-conflicts.sh to Step 4.4 in update-and-build.sh
+- Runs after patch application, before build
 
-### 0004-fix-scheduler-vruntime-field-names.patch
-- **CRITICAL BUILD FIX**
-- 1 file modification (kernel/sched/fair.c)
-- 3 targeted hunks:
-  - Line 13138: se_fi_update() function
-  - Line 13195: cfs_prio_less() function  
-  - Line 13434: init_cfs_rq() function
-- Fixes upstream kernel code using wrong field names
+**02d120b** - Add post-patch conflict resolution script
+- Created fix-build-conflicts.sh
+- Initial version with fixes #1-5
 
-## Reverting Changes
+**056b6fe** - Rename custom patches to 9001-9005
+- Moved to 9xxx numbering after CachyOS patches
 
-### To revert to before Gemini (RECOMMENDED)
-```bash
-git reset --hard 0a04fad
-```
-This returns to the stable scheduler fix without Gemini complications.
+**00b12b8** - Move numbered patches to cachyos-6.18 directory
+- Consolidated patch location
 
-### To revert to even earlier state
-```bash
-git log --oneline | head -20
-git reset --hard <commit-hash>
-```
+**4659ae5**, **a4adacd** - Early patch attempts
+- Later superseded by fix-build-conflicts.sh
 
-### To check what changed
-```bash
-git diff 0a04fad 5a8d5af
-git show 5a8d5af
-```
+## Active Patches (3)
 
-## Branch Information
-```
-Branch: rseq-timeslice
-Tracking: origin/rseq-timeslice (custom branch for RSEQ work)
-Base: Linux 6.18.4 (v6.18.4 tag)
-```
+### 9001-revocable-resource-management.patch
+- Revocable resource management infrastructure (6 files)
+- Status: ✅ Applied successfully
 
-## How Patches Persist Across Builds
+### 9002-rseq-timeslice-extension.patch
+- **PRIMARY FEATURE**: RSEQ time slice extension (21 files, 937 lines)
+- Syscall 470, prctl interface, sysctl control
+- Status: ✅ Applied with conflicts (auto-resolved)
 
-1. **Problem**: `scripts/update-and-build.sh` does `git reset --hard HEAD` when --resume not used
-   - This wipes any loose source edits
-   
-2. **Solution**: Put all fixes in patches/ folder and apply in build script
-   - Patches are applied fresh on each build
-   - Changes persist through source resets
-   
-3. **Verification**: After build, fixes appear in source because patches were applied:
-   ```bash
-   cd builds/linux-6.18
-   git log --oneline | grep -i "patch\|fix"
-   # Shows patch commits applied to this kernel tree
-   ```
+### 9003-rseq-timeslice-debian-fixes.patch
+- glibc 2.41 compatibility (4 files)
+- Status: ✅ Applied successfully
 
-## Adding New Fixes
+## Workflow Integration
 
-### Proper way (persists):
-1. Make change in builds/linux-6.18/
-2. Commit with git: `git commit -am "Fix description"`
-3. Export patch: `git format-patch -1 HEAD -o ../../patches/`
-4. Add to update-and-build.sh script
-5. Commit both to main repo
+### fix-build-conflicts.sh (9 Automated Fixes)
+- Runs at Step 4.4 in update-and-build.sh
+- Fixes merge conflicts, API changes, field name mismatches
+- ✅ Fully integrated, automatic execution
 
-### Wrong way (doesn't persist):
-1. Edit files in builds/linux-6.18/
-2. Run build
-3. Changes get wiped by next `git reset --hard`
-4. Have to redo everything
-
-## Current State Summary
-
-✅ **All fixes properly committed to git**
-✅ **All patches stored in patches/ folder**
-✅ **All patches integrated into build script**
-✅ **Gemini chaos reverted, clean state restored**
-✅ **Ready for build**
-
-Last successful kernel compile:
-- Config backed up: `configs/.config-6.18.20260204`
-- Portable installer created: `installer-6.18.8-BobZKernel-*`
+## Stats
+- Branch: rseq-timeslice
+- Commits ahead: 28
+- Kernel: 6.18.8-BobZKernel+ (booting successfully)
