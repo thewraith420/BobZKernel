@@ -1,0 +1,26 @@
+From: BobZ Kernel Build <build@bobz>
+Date: Tue, 4 Feb 2026 23:38:00 +0000
+Subject: [PATCH] Fix duplicate sysctl_sched_migration_cost definition
+
+There was an unconditional definition of sysctl_sched_migration_cost at line 99
+followed by a conditional redefinition in the CONFIG_CACHY block. This caused
+a "redefinition" compiler error. Remove the unconditional definition and keep
+only the ifdef version which handles both CONFIG_CACHY and non-CACHY cases.
+
+Fixes: error: redefinition of 'sysctl_sched_migration_cost'
+
+---
+ kernel/sched/fair.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index f6618780c44a..a3b584727e86 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -99,7 +99,6 @@ unsigned int sysctl_sched_tunable_scaling = SYSCTL_SCHED_TUNABLE_SCALING_LINLOG;
+ #endif /* CONFIG_SCHED_BORE */
+ 
+-__read_mostly unsigned int sysctl_sched_migration_cost = 500000UL;
+ 
+ #ifdef CONFIG_CACHY
+ __read_mostly unsigned int sysctl_sched_migration_cost	= 300000UL;
