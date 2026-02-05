@@ -1,0 +1,44 @@
+From: BobZKernel <bobgenaw420@gmail.com>
+Date: Tue, 4 Feb 2026 20:30:00 -0500
+Subject: [PATCH] Fix scheduler vruntime field names - use zero_vruntime instead of min_vruntime
+
+The kernel struct defines zero_vruntime and zero_vruntime_fi but some code
+still references min_vruntime and min_vruntime_fi. Update references to use
+the correct field names.
+
+---
+ kernel/sched/fair.c | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index a3b584727e86..8f5a5e7e8b7f 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -13134,7 +13134,7 @@ static void se_fi_update(struct sched_entity *se, unsigned int fi_seq,
+ 		if (cfs_rq->forceidle_seq == fi_seq)
+ 			break;
+ 		cfs_rq->forceidle_seq = fi_seq;
+-		cfs_rq->min_vruntime_fi = cfs_rq->min_vruntime;
++		cfs_rq->zero_vruntime_fi = cfs_rq->zero_vruntime;
+ 	}
+ }
+ 
+@@ -13189,7 +13189,7 @@ bool cfs_prio_less(const struct task_struct *a, const struct task_struct *b,
+ 	 * Find delta after normalizing se's vruntime with its cfs_rq's
+ 	 * min_vruntime_fi, which would have been updated in prior calls
+ 	 * to se_fi_update().
+ 	 */
+-	delta = (s64)(sea->vruntime - seb->vruntime) +
+-		(s64)(cfs_rqb->min_vruntime_fi - cfs_rqa->min_vruntime_fi);
++	delta = (s64)(sea->vruntime - seb->vruntime) +
++		(s64)(cfs_rqb->zero_vruntime_fi - cfs_rqa->zero_vruntime_fi);
+ 
+ 	return delta > 0;
+@@ -13433,7 +13433,7 @@ void init_cfs_rq(struct cfs_rq *cfs_rq)
+ {
+ 	cfs_rq->tasks_timeline = RB_ROOT_CACHED;
+-	cfs_rq->min_vruntime = (u64)(-(1LL << 20));
++	cfs_rq->zero_vruntime = (u64)(-(1LL << 20));
+ 	raw_spin_lock_init(&cfs_rq->removed.lock);
+ }
+ 

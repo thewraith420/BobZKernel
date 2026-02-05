@@ -1,6 +1,6 @@
 #!/bin/bash
 # Complete workflow: Update kernel, apply patches, verify, build, and install
-# Usage: ./update-and-build.sh [--skip-update] [--skip-install] [--yes]
+# Usage: ./update-and-build.sh [--skip-update] [--skip-install] [--yes] [--resume]
 
 set -e
 set -o pipefail
@@ -16,6 +16,7 @@ KERNEL_VERSION="6.18"
 SKIP_UPDATE=false
 SKIP_INSTALL=false
 AUTO_YES=false
+RESUME_BUILD=false
 
 # Parse arguments
 for arg in "$@"; do
@@ -29,9 +30,13 @@ for arg in "$@"; do
         --yes|-y)
             AUTO_YES=true
             ;;
+        --resume)
+            RESUME_BUILD=true
+            SKIP_UPDATE=true
+            ;;
         *)
             echo -e "${RED}Unknown argument: $arg${NC}"
-            echo "Usage: $0 [--skip-update] [--skip-install] [--yes]"
+            echo "Usage: $0 [--skip-update] [--skip-install] [--yes] [--resume]"
             exit 1
             ;;
     esac
@@ -44,6 +49,7 @@ echo ""
 echo "Kernel Version: $KERNEL_VERSION"
 echo "Skip Update: $SKIP_UPDATE"
 echo "Skip Install: $SKIP_INSTALL"
+echo "Resume Build: $RESUME_BUILD"
 echo ""
 
 if [ "$AUTO_YES" = false ]; then
@@ -61,10 +67,13 @@ if [ "$SKIP_UPDATE" = false ]; then
     cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
     # Clean up any uncommitted changes or merge conflicts from previous builds
-    if [ -n "$(git status --porcelain)" ]; then
+    # Skip cleaning if --resume flag is used
+    if [ "$RESUME_BUILD" = false ] && [ -n "$(git status --porcelain)" ]; then
         echo -e "${YELLOW}Cleaning up uncommitted changes from previous build...${NC}"
         git reset --hard HEAD
         git clean -fd
+    elif [ "$RESUME_BUILD" = true ]; then
+        echo -e "${GREEN}Resume mode: Preserving build state${NC}"
     fi
 
     # Check if updates are available without --yes flag to get user prompt if needed
@@ -173,6 +182,17 @@ if [ "$BRANCH" = "rseq-timeslice" ]; then
     fi
     echo ""
 fi
+
+# Step 4.8: Apply Scheduler vruntime field name fixes
+echo -e "${BLUE}═══ Applying Scheduler vruntime Fixes ═══${NC}"
+cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+if patch -p1 --dry-run < "$BASE_DIR/patches/0004-fix-scheduler-vruntime-field-names.patch" > /dev/null 2>&1; then
+    patch -p1 < "$BASE_DIR/patches/0004-fix-scheduler-vruntime-field-names.patch"
+    echo -e "${GREEN}✓ Scheduler vruntime fixes applied${NC}"
+else
+    echo -e "${YELLOW}⚠ Scheduler vruntime patch already applied or conflicts detected - skipping${NC}"
+fi
+echo ""
 
 # Step 5: Apply config and build
 echo -e "${BLUE}═══ Step 5/7: Building Kernel ═══${NC}"
