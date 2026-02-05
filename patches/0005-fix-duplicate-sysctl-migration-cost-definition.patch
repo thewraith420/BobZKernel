@@ -1,26 +1,41 @@
 From: BobZ Kernel Build <build@bobz>
 Date: Tue, 4 Feb 2026 23:38:00 +0000
-Subject: [PATCH] Fix duplicate sysctl_sched_migration_cost definition
+Subject: [PATCH] Fix duplicate sysctl_sched_migration_cost and broken comment
 
-There was an unconditional definition of sysctl_sched_migration_cost at line 99
-followed by a conditional redefinition in the CONFIG_CACHY block. This caused
-a "redefinition" compiler error. Remove the unconditional definition and keep
-only the ifdef version which handles both CONFIG_CACHY and non-CACHY cases.
+There were two issues:
+1. An unconditional definition of sysctl_sched_migration_cost at line 99
+   followed by a conditional redefinition in the CONFIG_CACHY block
+2. A broken comment block with missing closing */ before #ifdef preprocessor
 
-Fixes: error: redefinition of 'sysctl_sched_migration_cost'
+Remove the unconditional definition and fix the comment to properly close
+before the #ifdef block. Keep only the ifdef version which handles both
+CONFIG_CACHY and non-CACHY cases.
+
+Fixes: 
+  - error: redefinition of 'sysctl_sched_migration_cost'
+  - error: #endif without #if
+  - error: use of undeclared identifier 'nsecs_per_tick'
 
 ---
- kernel/sched/fair.c | 1 -
- 1 file changed, 1 deletion(-)
+ kernel/sched/fair.c | 6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
 
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index f6618780c44a..a3b584727e86 100644
+index 4ec2cfe4c643..a3b584727e86 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -99,7 +99,6 @@ unsigned int sysctl_sched_tunable_scaling = SYSCTL_SCHED_TUNABLE_SCALING_LINLOG;
- #endif /* CONFIG_SCHED_BORE */
+@@ -83,11 +83,14 @@ unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_LOG;
+  /*
+   * Minimal preemption granularity for CPU-bound tasks:
+-  *
++  * BORE : base_slice = minimum multiple of nsecs_per_tick >= min_base_slice
++  * (default min_base_slice = 2000000 constant, units: nanoseconds)
++  * EEVDF: default 0.70 msec * (1 + ilog(ncpus)), units: nanoseconds
++  */
+- * (default: 0.70 msec * (1 + ilog(ncpus)), units: nanoseconds)
+- */
  
--__read_mostly unsigned int sysctl_sched_migration_cost = 500000UL;
- 
- #ifdef CONFIG_CACHY
- __read_mostly unsigned int sysctl_sched_migration_cost	= 300000UL;
+- #ifdef CONFIG_CACHY
+- unsigned int sysctl_sched_base_slice                  = 350000ULL;
++  #ifdef CONFIG_SCHED_BORE
++ static const unsigned int nsecs_per_tick = 1000000000ULL / HZ;
