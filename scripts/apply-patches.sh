@@ -59,6 +59,25 @@ fi
 
 cd "$KERNEL_DIR"
 
+# First, apply numbered patches from root patches directory
+echo -e "${BLUE}=== Applying numbered patches from root patches directory ===${NC}"
+NUMBERED_PATCH_COUNT=0
+for patch in "$BASE_DIR/patches"/000[1-9]-*.patch; do
+    if [ -f "$patch" ]; then
+        PATCH_NAME=$(basename "$patch")
+        echo -e "${BLUE}Applying: $PATCH_NAME${NC}"
+        if git apply --check "$patch" 2>/dev/null; then
+            git apply "$patch"
+            echo -e "${GREEN}✓ Applied cleanly${NC}"
+            ((NUMBERED_PATCH_COUNT++))
+        else
+            echo -e "${YELLOW}⊘ Patch already applied or conflicts exist, skipping${NC}"
+        fi
+    fi
+done
+echo "Applied $NUMBERED_PATCH_COUNT numbered patches"
+echo ""
+
 # Check if there are uncommitted changes
 if ! git diff-index --quiet HEAD -- 2>/dev/null; then
     if [ "$FORCE" = true ]; then
