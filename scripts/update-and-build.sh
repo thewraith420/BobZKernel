@@ -151,6 +151,11 @@ echo -e "${BLUE}═══ Step 4/7: Verifying Patches ═══${NC}"
 echo -e "${GREEN}✓ Patches verified${NC}"
 echo ""
 
+# Step 4.4: Fix build conflicts from patch application
+echo -e "${BLUE}═══ Fixing Build Conflicts ═══${NC}"
+./scripts/fix-build-conflicts.sh "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+echo ""
+
 # Step 4.5: Apply cluster-aware NVMe IRQ optimization backport
 echo -e "${BLUE}═══ Applying NVMe Cluster-Aware IRQ Optimization ═══${NC}"
 ./scripts/apply-cluster-aware-backport.sh || {
