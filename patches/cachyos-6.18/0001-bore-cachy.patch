@@ -615,6 +615,7 @@ index 000000000..7c1baa1bd
 +		.mode		= 0644,
 +		.proc_handler = proc_douintvec,
 +	},
++	{}
 +};
 +
 +static int __init sched_bore_sysctl_init(void) {

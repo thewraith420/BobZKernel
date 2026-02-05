@@ -844,6 +844,18 @@ index 2452b7366b00..356513220af0 100644
 +	return 0;
 +}
 +device_initcall(rseq_slice_init);
++
++#else /* !CONFIG_RSEQ_SLICE_EXTENSION */
++
++/**
++ * Stub implementation when CONFIG_RSEQ_SLICE_EXTENSION is disabled.
++ * Always returns 0 since the feature is not available.
++ */
++SYSCALL_DEFINE0(rseq_slice_yield)
++{
++	return 0;
++}
++
 +#endif /* CONFIG_RSEQ_SLICE_EXTENSION */
 diff --git a/kernel/sys.c b/kernel/sys.c
 index 8b58eece4e58..af71987df81c 100644

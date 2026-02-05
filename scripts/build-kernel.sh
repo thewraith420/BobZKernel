@@ -114,6 +114,11 @@ else
     USE_CCACHE=""
 fi
 
+# Clean up old build logs
+echo -e "${BLUE}Cleaning old build logs...${NC}"
+find "$BASE_DIR" -maxdepth 1 -name "build-*.log" -type f -delete 2>/dev/null || true
+echo -e "${GREEN}✓ Old logs removed${NC}"
+
 # Set up log file
 LOG_FILE="$BASE_DIR/build-$KERNEL_VERSION-$(date +%Y%m%d-%H%M%S).log"
 
