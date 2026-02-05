@@ -25,4 +25,16 @@ sed -i '/^__read_mostly unsigned int sysctl_sched_migration_cost = 500000UL;$/d'
 sed -i 's/cfs_rq->min_vruntime\([^_]\)/cfs_rq->zero_vruntime\1/g' "$KERNEL_DIR/kernel/sched/fair.c"
 sed -i 's/cfs_rq->min_vruntime_fi\([^_]\)/cfs_rq->zero_vruntime_fi\1/g' "$KERNEL_DIR/kernel/sched/fair.c"
 
+# Fix 6: Remove merge conflict marker from bore.c
+sed -i '/<<<<<<< ours/,/>>>>>>> theirs/{/<<<<<<< ours/d; /=======/d; />>>>>>> theirs/d}' "$KERNEL_DIR/kernel/sched/bore.c"
+
+# Fix 7: Remove duplicate 'static' from revocable.c (DEFINE_SRCU already includes static)
+sed -i 's/^static DEFINE_SRCU(revocable_srcu);$/DEFINE_SRCU(revocable_srcu);/' "$KERNEL_DIR/drivers/base/revocable.c"
+
+# Fix 8: Update hrtimer API in rseq.c (hrtimer_init → hrtimer_setup)
+sed -i '/hrtimer_init(&st->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED_HARD);/{N;s/hrtimer_init(&st->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED_HARD);\n\t\tst->timer.function = rseq_slice_expired;/hrtimer_setup(\&st->timer, rseq_slice_expired, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED_HARD);/}' "$KERNEL_DIR/kernel/rseq.c"
+
+# Fix 9: Update sysctl registration API in rseq.c (register_sysctl → register_sysctl_init)
+sed -i 's/register_sysctl("kernel", rseq_slice_ext_sysctl);/register_sysctl_init("kernel", rseq_slice_ext_sysctl);/' "$KERNEL_DIR/kernel/rseq.c"
+
 echo "✓ Build conflicts fixed"
