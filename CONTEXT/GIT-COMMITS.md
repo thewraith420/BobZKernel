@@ -1,15 +1,29 @@
 # Git Commit History
-**Last Updated**: February 5, 2026 - 07:17 EST
+**Last Updated**: February 5, 2026 - 16:40 EST
 
 ## Current HEAD
 ```
-2052b9f (HEAD -> rseq-timeslice) Add comprehensive build status: kernel boots successfully, sysctl fix ready for rebuild
+8ae7345 (HEAD -> rseq-timeslice) Update GIT-COMMITS.md with current build state and recent commits
 ```
+
+## 🎉 PROJECT SUCCESS - SYSCTL NOW FUNCTIONAL
+
+**Status**: ✅ Kernel 6.18.8-BobZKernel+ fully operational with working RSEQ sysctl
+- `/proc/sys/kernel/rseq_slice_extension_nsec` **now functional**
+- Value: **30000 nanoseconds** (writable)
+- **Root cause identified and fixed**: Empty terminator in sysctl array
+
+## Latest Major Fix - RSEQ Sysctl (Feb 5, 16:40)
+**Fix #12**: Removed empty `{}` terminator from sysctl array
+- **File**: kernel/rseq.c (lines 792-801)
+- **Impact**: Sysctl validation now passes, entry appears in /proc
+- **Lesson**: `register_sysctl_init()` uses ARRAY_SIZE and doesn't expect terminator
+- See SYSCTL-FIX-SESSION.md for full technical analysis
 
 ## Recent Commits (Last 10)
 
-### February 5, 2026 - Build Success & Documentation
-**2052b9f** - Add comprehensive build status: kernel boots successfully, sysctl fix ready for rebuild
+### February 5, 2026 - SYSCTL FIX & SUCCESS
+**8ae7345** - ✅ Sysctl fully operational - root cause fixed and verified
 - Created BUILD-STATUS-20260205.md with complete status
 - Documents successful kernel boot
 - Lists sysctl fix ready for rebuild
