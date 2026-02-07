@@ -1,4 +1,4 @@
-# RSEQ Sysctl Fix Session - February 5, 2026
+# RSEQ Sysctl Fix Session - February 5-7, 2026
 
 ## Problem Statement
 The RSEQ slice extension feature was compiling and running successfully, but the sysctl entry `/proc/sys/kernel/rseq_slice_extension_nsec` was not appearing in `/proc/sys/kernel/` despite:
@@ -83,7 +83,7 @@ To absolute path:
 "$BASE_DIR/scripts/fix-build-conflicts.sh"
 ```
 
-## Verification
+## Verification (6.18.8)
 
 **Timestamp**: February 5, 2026 - 16:40 EST
 
@@ -136,3 +136,47 @@ This fix enables full dynamic control of the RSEQ slice extension feature at run
 - Monitoring feature state
 - Hot-adjustment without recompilation or reboot
 - Integration with system management tools and orchestration systems
+
+---
+
+## 6.18.9 Regression Fix - February 7, 2026
+
+### Problem
+After updating to kernel 6.18.9, the RSEQ sysctl stopped appearing again despite fixes working on 6.18.8.
+
+### Root Cause
+The 6.18.9 kernel changes caused RSEQ patches to apply with different conflict patterns:
+
+1. **Fix #3 issue**: The old conflict resolution deleted the entire conflict block including the closing brace for the sysctl struct, causing a syntax error
+2. **Fix #12 issue**: The sed regex crashed with "Unescaped left brace" error and never ran
+
+### Solution Applied (Commit 1c95967)
+
+**Fix #3 Update**: Keep 'theirs' (patched code) instead of deleting
+```bash
+# OLD (broke on 6.18.9):
+sed -i '/<<<<<<< ours/,/>>>>>>> theirs/d'
+
+# NEW (preserves patched code):
+sed -i '/<<<<<<< ours/,/=======/d; />>>>>>> theirs/d'
+```
+
+**Fix #12 Update**: Use perl for multi-line matching with escaped braces
+```bash
+# OLD (regex crash):
+sed -i '...\{\}...'
+
+# NEW (works correctly):
+perl -0777 -i -pe 's/pattern with \{\}/replacement/gs'
+```
+
+### Verification (Feb 7, 2026)
+```bash
+$ uname -r
+6.18.9-BobZKernel+
+
+$ cat /proc/sys/kernel/rseq_slice_extension_nsec
+30000
+```
+
+✅ **Sysctl working on 6.18.9**

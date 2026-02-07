@@ -1,4 +1,4 @@
-# BobZKernel 6.18.8+ Project Context
+# BobZKernel 6.18.9 Project Context
 
 ## Project Goals
 1. **System Optimization**: Optimize Lenovo LOQ 15IRH8 for battery life (battery mode) and smoothness (AC mode)
@@ -13,9 +13,9 @@
 - **OS**: Debian GNU/Linux 13 (trixie)
 
 ## Current Kernel Version
-- **Base**: Linux 6.18.8
+- **Base**: Linux 6.18.9
 - **Branch**: rseq-timeslice
-- **Build Tag**: 6.18.8-BobZKernel+
+- **Build Tag**: 6.18.9-BobZKernel+
 
 ## Key Configuration
 ```

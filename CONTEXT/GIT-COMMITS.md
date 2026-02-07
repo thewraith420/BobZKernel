@@ -1,26 +1,35 @@
 # Git Commit History
-**Last Updated**: February 5, 2026 - 16:40 EST
+**Last Updated**: February 7, 2026
 
 ## Current HEAD
 ```
-8ae7345 (HEAD -> rseq-timeslice) Update GIT-COMMITS.md with current build state and recent commits
+db1aeef (HEAD -> rseq-timeslice) Update CONTEXT folder for 6.18.9 RSEQ sysctl fix and build status
 ```
 
 ## 🎉 PROJECT SUCCESS - SYSCTL NOW FUNCTIONAL
 
-**Status**: ✅ Kernel 6.18.8-BobZKernel+ fully operational with working RSEQ sysctl
+**Status**: ✅ Kernel 6.18.9-BobZKernel+ fully operational with working RSEQ sysctl
 - `/proc/sys/kernel/rseq_slice_extension_nsec` **now functional**
 - Value: **30000 nanoseconds** (writable)
-- **Root cause identified and fixed**: Empty terminator in sysctl array
+- **Root cause identified and fixed**: 6.18.9 conflict resolution + regex fixes
 
-## Latest Major Fix - RSEQ Sysctl (Feb 5, 16:40)
-**Fix #12**: Removed empty `{}` terminator from sysctl array
-- **File**: kernel/rseq.c (lines 792-801)
-- **Impact**: Sysctl validation now passes, entry appears in /proc
-- **Lesson**: `register_sysctl_init()` uses ARRAY_SIZE and doesn't expect terminator
+## Latest Major Fix - 6.18.9 RSEQ Sysctl Regression (Feb 7)
+
+**Commit 1c95967**: Fix RSEQ sysctl build regression on 6.18.9
+- **Fix #3**: Changed to keep 'theirs' (patched code) instead of deleting entire conflict block - preserves closing brace for sysctl struct
+- **Fix #12**: Updated to use perl -0777 for multi-line matching and escape braces to prevent 'Unescaped left brace' regex error
+- **Root cause**: 6.18.9 kernel changes caused RSEQ patches to apply with conflicts; old fixes deleted critical code
 - See SYSCTL-FIX-SESSION.md for full technical analysis
 
 ## Recent Commits (Last 10)
+
+### February 7, 2026 - 6.18.9 UPDATE
+**db1aeef** - Update CONTEXT folder for 6.18.9 RSEQ sysctl fix and build status
+
+**1c95967** - Fix RSEQ sysctl build regression on 6.18.9
+- Fix #3: Keep 'theirs' instead of deleting conflict block
+- Fix #12: Use perl for multi-line matching, escape braces
+- Updated 9002-rseq-timeslice-extension.patch
 
 ### February 5, 2026 - SYSCTL FIX & SUCCESS
 **8ae7345** - ✅ Sysctl fully operational - root cause fixed and verified
@@ -86,5 +95,4 @@
 
 ## Stats
 - Branch: rseq-timeslice
-- Commits ahead: 28
-- Kernel: 6.18.8-BobZKernel+ (booting successfully)
+- Kernel: 6.18.9-BobZKernel+ (booting successfully)
