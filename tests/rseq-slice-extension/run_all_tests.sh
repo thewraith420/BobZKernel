@@ -6,6 +6,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Check for non-interactive mode
+INTERACTIVE=1
+if [[ "$1" == "-q" ]] || [[ "$1" == "--quick" ]] || [[ ! -t 0 ]]; then
+    INTERACTIVE=0
+fi
+
+wait_for_user() {
+    if [[ $INTERACTIVE -eq 1 ]]; then
+        echo ""
+        echo "Press Enter to continue to next test..."
+        read
+    fi
+}
+
 PASS=0
 FAIL=0
 WARN=0
@@ -36,30 +50,32 @@ echo "=========================================="
 if ./test_feature_check; then
     echo ""
     echo "Result: ✓ PASS"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo ""
     echo "Result: ✗ FAIL - Kernel doesn't have RSEQ support"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
     echo ""
     echo "Cannot continue without kernel support. Exiting."
     exit 1
 fi
 
-echo ""
-echo "Press Enter to continue to next test..."
-read
+wait_for_user
 
 # Test 2: Debug State
 echo "=========================================="
 echo "Test 2: Debug State (Diagnostics)"
 echo "=========================================="
-./test_debug_state
-echo ""
-echo "Result: ℹ INFO (diagnostic only)"
-echo ""
-echo "Press Enter to continue to next test..."
-read
+if ./test_debug_state; then
+    echo ""
+    echo "Result: ✓ PASS - Grants detected"
+    PASS=$((PASS + 1))
+else
+    echo ""
+    echo "Result: ℹ INFO (diagnostic, grants may need more CPU contention)"
+fi
+
+wait_for_user
 
 # Test 3: Force Grant
 echo "=========================================="
@@ -68,16 +84,14 @@ echo "=========================================="
 if ./test_force_grant; then
     echo ""
     echo "Result: ✓ PASS"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo ""
     echo "Result: ⚠ WARNING - No grants detected"
-    ((WARN++))
+    WARN=$((WARN + 1))
 fi
 
-echo ""
-echo "Press Enter to continue to synthetic workload test..."
-read
+wait_for_user
 
 # Test 4: Synthetic Workload (the real test!)
 echo "=========================================="
@@ -95,11 +109,11 @@ echo ""
 if ./test_synthetic_workload; then
     echo ""
     echo "Result: ✓✓✓ PASS - Grants detected!"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo ""
     echo "Result: ⚠ WARNING - No grants (feature present but not granting)"
-    ((WARN++))
+    WARN=$((WARN + 1))
 fi
 
 # Final summary

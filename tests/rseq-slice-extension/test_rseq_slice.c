@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/syscall.h>
@@ -31,8 +32,10 @@
 #define __NR_rseq 334
 #endif
 
-#ifndef PR_RSEQ_SLICE_ENABLE
-#define PR_RSEQ_SLICE_ENABLE 73
+#ifndef PR_RSEQ_SLICE_EXTENSION
+#define PR_RSEQ_SLICE_EXTENSION 79
+#define PR_RSEQ_SLICE_EXTENSION_SET 2
+#define PR_RSEQ_SLICE_EXT_ENABLE 0x01
 #endif
 
 /* RSEQ structure from include/uapi/linux/rseq.h */
@@ -66,13 +69,18 @@ struct rseq {
     uint8_t end[];
 } __attribute__((aligned(32)));
 
-/* Glibc 2.35+ automatically registers RSEQ, use its structure */
-static __thread volatile struct rseq *__rseq_abi_ptr = NULL;
+/* Use __rseq_offset to properly locate RSEQ struct in TLS */
+extern ptrdiff_t __rseq_offset __attribute__((weak));
 
-/* Fallback structure if glibc doesn't have RSEQ */
-static __thread volatile struct rseq __rseq_abi_fallback = {
-    .cpu_id = UINT32_MAX,
-};
+static struct rseq *get_rseq(void)
+{
+    char *tls_base;
+    asm("mov %%fs:0, %0" : "=r"(tls_base));
+    return (struct rseq *)(tls_base + __rseq_offset);
+}
+
+/* Thread-local pointer to RSEQ struct */
+static __thread volatile struct rseq *__rseq_abi_ptr = NULL;
 
 /* Statistics */
 struct test_stats {
@@ -82,61 +90,39 @@ struct test_stats {
     unsigned long iterations;
 };
 
-/* Access glibc's RSEQ area via __rseq_abi symbol */
-extern __thread volatile struct rseq __rseq_abi __attribute__((weak));
-
 static int rseq_register(void)
 {
-    int rc;
-
-    /* Check if glibc provides __rseq_abi */
-    if (&__rseq_abi != NULL) {
-        printf("Using glibc's RSEQ registration\n");
-        __rseq_abi_ptr = (struct rseq *)&__rseq_abi;
-
-        if (__rseq_abi_ptr->cpu_id == RSEQ_CPU_ID_REGISTRATION_FAILED) {
-            printf("RSEQ registration failed by glibc\n");
-            return -1;
-        }
-
-        printf("RSEQ already registered by glibc (OK)\n");
-        return 0;
-    }
-
-    /* Fallback: manual registration */
-    printf("DEBUG: sizeof(struct rseq) = %zu\n", sizeof(__rseq_abi_fallback));
-    printf("DEBUG: RSEQ_SIG = 0x%x\n", RSEQ_SIG);
-
-    __rseq_abi_ptr = &__rseq_abi_fallback;
-    rc = syscall(__NR_rseq, __rseq_abi_ptr, sizeof(__rseq_abi_fallback), 0, RSEQ_SIG);
-    if (rc) {
-        if (errno == EBUSY) {
-            printf("RSEQ already registered (OK)\n");
-            return 0;
-        }
-        printf("rseq registration failed: %s (errno=%d)\n", strerror(errno), errno);
+    /* Check if glibc provides __rseq_offset */
+    if (!&__rseq_offset) {
+        printf("glibc RSEQ offset not available\n");
         return -1;
     }
 
-    printf("RSEQ registered successfully\n");
+    __rseq_abi_ptr = get_rseq();
+    printf("Using glibc's RSEQ via __rseq_offset=%td\n", __rseq_offset);
+    printf("RSEQ struct at: %p\n", (void *)__rseq_abi_ptr);
+
+    if (__rseq_abi_ptr->cpu_id == RSEQ_CPU_ID_REGISTRATION_FAILED) {
+        printf("RSEQ registration failed by glibc\n");
+        return -1;
+    }
+
+    printf("RSEQ registered by glibc (cpu_id=%u)\n", __rseq_abi_ptr->cpu_id);
     return 0;
 }
 
 static int rseq_unregister(void)
 {
-    /* Don't unregister if using glibc's RSEQ */
-    if (__rseq_abi_ptr == (struct rseq *)&__rseq_abi)
-        return 0;
-
-    return syscall(__NR_rseq, __rseq_abi_ptr, sizeof(__rseq_abi_fallback),
-                   RSEQ_FLAG_UNREGISTER, RSEQ_SIG);
+    /* Don't unregister - glibc manages it */
+    return 0;
 }
 
 static int enable_slice_extension(void)
 {
-    int rc = prctl(PR_RSEQ_SLICE_ENABLE, 1, 0, 0, 0);
+    int rc = prctl(PR_RSEQ_SLICE_EXTENSION, PR_RSEQ_SLICE_EXTENSION_SET,
+                   PR_RSEQ_SLICE_EXT_ENABLE, 0, 0);
     if (rc < 0) {
-        perror("prctl(PR_RSEQ_SLICE_ENABLE) failed");
+        perror("prctl(PR_RSEQ_SLICE_EXTENSION) failed");
         return -1;
     }
 
@@ -162,62 +148,79 @@ static inline void clear_request(void)
     __asm__ __volatile__("" ::: "memory");
 }
 
-/* Test 1: Basic grant functionality */
+/* Test 1: Basic grant functionality with CPU-bound work */
 static int test_basic_grant(void)
 {
-    printf("\n=== Test 1: Basic Grant Functionality ===\n");
+    int grants = 0;
+    volatile unsigned long counter = 0;
+    time_t start;
 
-    clear_request();
-    request_slice_extension();
+    printf("\n=== Test 1: Basic Grant Functionality (CPU-bound) ===\n");
 
-    /* Give kernel a chance to process */
-    usleep(1000);
-
-    if (check_grant()) {
-        printf("✓ Slice extension granted\n");
+    start = time(NULL);
+    while (time(NULL) - start < 1) {
         clear_request();
+        request_slice_extension();
+
+        /* CPU-bound work to trigger actual preemption */
+        for (int j = 0; j < 10000; j++) {
+            counter++;
+        }
+
+        __asm__ __volatile__("" ::: "memory");
+        if (check_grant()) {
+            grants++;
+            __rseq_abi_ptr->slice_ctrl.granted = 0;
+        }
+    }
+
+    printf("  Iterations: %lu, Grants: %d\n", counter, grants);
+    if (grants > 0) {
+        printf("✓ Slice extension granted (%d times)\n", grants);
         return 0;
     } else {
-        printf("✗ Slice extension NOT granted (may be under load)\n");
+        printf("✗ Slice extension NOT granted (may need more CPU contention)\n");
         return -1;
     }
 }
 
-/* Test 2: Multiple requests */
+/* Test 2: Multiple requests with CPU-bound work */
 static int test_multiple_requests(struct test_stats *stats)
 {
-    int i, grants = 0;
-    const int iterations = 1000;
+    volatile unsigned long counter = 0;
+    time_t start;
 
-    printf("\n=== Test 2: Multiple Requests (%d iterations) ===\n", iterations);
+    printf("\n=== Test 2: Multiple Requests (2 seconds CPU-bound) ===\n");
 
     memset(stats, 0, sizeof(*stats));
 
-    for (i = 0; i < iterations; i++) {
+    start = time(NULL);
+    while (time(NULL) - start < 2) {
         clear_request();
         request_slice_extension();
+        stats->requests++;
 
-        /* Small delay to allow grant processing */
-        for (volatile int j = 0; j < 1000; j++);
+        /* CPU-bound work to trigger actual preemption */
+        for (int j = 0; j < 10000; j++) {
+            counter++;
+        }
 
+        __asm__ __volatile__("" ::: "memory");
         if (check_grant()) {
-            grants++;
             stats->grants++;
+            __rseq_abi_ptr->slice_ctrl.granted = 0;
         } else {
             stats->denials++;
         }
-        stats->requests++;
         stats->iterations++;
-
-        clear_request();
     }
 
     printf("Requests: %lu, Grants: %lu, Denials: %lu\n",
            stats->requests, stats->grants, stats->denials);
     printf("Grant rate: %.2f%%\n",
-           (stats->grants * 100.0) / stats->requests);
+           stats->requests > 0 ? (stats->grants * 100.0) / stats->requests : 0.0);
 
-    if (grants > 0) {
+    if (stats->grants > 0) {
         printf("✓ Multiple grants working\n");
         return 0;
     } else {
@@ -230,30 +233,36 @@ static int test_multiple_requests(struct test_stats *stats)
 static void *stress_worker(void *arg)
 {
     struct test_stats *stats = (struct test_stats *)arg;
-    int i;
+    volatile unsigned long counter = 0;
+    time_t start;
+    struct rseq *r;
 
-    /* Register RSEQ for this thread */
-    if (rseq_register() < 0)
-        return NULL;
+    /* Get RSEQ pointer for this thread */
+    r = get_rseq();
 
     if (enable_slice_extension() < 0)
         return NULL;
 
-    for (i = 0; i < 10000; i++) {
-        clear_request();
-        request_slice_extension();
+    /* Run CPU-bound work for 2 seconds */
+    start = time(NULL);
+    while (time(NULL) - start < 2) {
+        r->slice_ctrl.all = 0;
+        r->slice_ctrl.request = 1;
+        __asm__ __volatile__("" ::: "memory");
 
-        /* Do some work */
-        for (volatile int j = 0; j < 100; j++);
+        /* CPU-bound work */
+        for (int j = 0; j < 10000; j++) {
+            counter++;
+        }
 
-        if (check_grant()) {
+        __asm__ __volatile__("" ::: "memory");
+        if (r->slice_ctrl.granted) {
             __sync_fetch_and_add(&stats->grants, 1);
+            r->slice_ctrl.granted = 0;
         } else {
             __sync_fetch_and_add(&stats->denials, 1);
         }
         __sync_fetch_and_add(&stats->requests, 1);
-
-        clear_request();
     }
 
     return NULL;

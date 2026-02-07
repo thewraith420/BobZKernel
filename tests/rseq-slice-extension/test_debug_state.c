@@ -2,16 +2,19 @@
 /*
  * Debug RSEQ State
  *
- * Print detailed state to understand why grants aren't happening
+ * Print detailed state to understand the RSEQ time slice extension.
+ * Uses proper TLS access via __rseq_offset.
  */
 
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <sys/prctl.h>
 #include <signal.h>
+#include <time.h>
 
 #ifndef PR_RSEQ_SLICE_EXTENSION
 #define PR_RSEQ_SLICE_EXTENSION 79
@@ -42,35 +45,46 @@ struct rseq {
     char end[];
 } __attribute__((aligned(32)));
 
-extern __thread struct rseq __rseq_abi __attribute__((weak));
+/* Use __rseq_offset to properly locate RSEQ struct in TLS */
+extern ptrdiff_t __rseq_offset __attribute__((weak));
+
+static struct rseq *get_rseq(void)
+{
+    char *tls_base;
+    asm("mov %%fs:0, %0" : "=r"(tls_base));
+    return (struct rseq *)(tls_base + __rseq_offset);
+}
 
 int main(void)
 {
     int rc;
     sigset_t set;
+    struct rseq *r;
 
     printf("RSEQ State Debugger\n");
     printf("===================\n\n");
 
-    if (!&__rseq_abi) {
-        printf("✗ glibc RSEQ not available\n");
+    if (!&__rseq_offset) {
+        printf("✗ glibc RSEQ offset not available\n");
         return 1;
     }
 
+    r = get_rseq();
+
     printf("[RSEQ Structure State]\n");
-    printf("  Address:      %p\n", (void *)&__rseq_abi);
-    printf("  cpu_id_start: %u (0x%x)\n", __rseq_abi.cpu_id_start, __rseq_abi.cpu_id_start);
-    printf("  cpu_id:       %u (0x%x)\n", __rseq_abi.cpu_id, __rseq_abi.cpu_id);
-    printf("  rseq_cs:      0x%lx\n", __rseq_abi.rseq_cs);
-    printf("  flags:        0x%x\n", __rseq_abi.flags);
-    printf("  node_id:      %u\n", __rseq_abi.node_id);
-    printf("  mm_cid:       %u\n", __rseq_abi.mm_cid);
-    printf("  slice_ctrl.all: 0x%x\n", __rseq_abi.slice_ctrl.all);
-    printf("  slice_ctrl.request: %u\n", __rseq_abi.slice_ctrl.request);
-    printf("  slice_ctrl.granted: %u\n\n", __rseq_abi.slice_ctrl.granted);
+    printf("  Address:      %p (via __rseq_offset=%td)\n", (void *)r, __rseq_offset);
+    printf("  cpu_id_start: %u (0x%x)\n", r->cpu_id_start, r->cpu_id_start);
+    printf("  cpu_id:       %u (0x%x)\n", r->cpu_id, r->cpu_id);
+    printf("  rseq_cs:      0x%lx\n", (unsigned long)r->rseq_cs);
+    printf("  flags:        0x%x\n", r->flags);
+    printf("  node_id:      %u\n", r->node_id);
+    printf("  mm_cid:       %u\n", r->mm_cid);
+    printf("  slice_ctrl.all: 0x%x\n", r->slice_ctrl.all);
+    printf("  slice_ctrl.request: %u\n", r->slice_ctrl.request);
+    printf("  slice_ctrl.granted: %u\n\n", r->slice_ctrl.granted);
 
     /* Check if cpu_id looks valid */
-    if (__rseq_abi.cpu_id > 1024) {
+    if (r->cpu_id > 1024) {
         printf("⚠ WARNING: cpu_id looks invalid (>1024)\n");
         printf("  This suggests RSEQ might not be properly registered\n\n");
     }
@@ -113,51 +127,57 @@ int main(void)
     }
 
     printf("\n[RSEQ Flags Decoded]\n");
-    printf("  Raw flags: 0x%x\n", __rseq_abi.flags);
+    printf("  Raw flags: 0x%x\n", r->flags);
 
     /* Bit 4 and 5 from rseq.h */
     #define RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE (1U << 4)
     #define RSEQ_CS_FLAG_SLICE_EXT_ENABLED   (1U << 5)
 
-    if (__rseq_abi.flags & RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE) {
+    if (r->flags & RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE) {
         printf("  ✓ SLICE_EXT_AVAILABLE bit set\n");
     } else {
         printf("  ✗ SLICE_EXT_AVAILABLE bit NOT set\n");
     }
 
-    if (__rseq_abi.flags & RSEQ_CS_FLAG_SLICE_EXT_ENABLED) {
+    if (r->flags & RSEQ_CS_FLAG_SLICE_EXT_ENABLED) {
         printf("  ✓ SLICE_EXT_ENABLED bit set\n");
     } else {
         printf("  ✗ SLICE_EXT_ENABLED bit NOT set\n");
     }
 
-    printf("\n[Test: Request and Check]\n");
-    __rseq_abi.slice_ctrl.all = 0;
-    __rseq_abi.slice_ctrl.request = 1;
+    printf("\n[Test: CPU-bound work to trigger grants]\n");
+    r->slice_ctrl.all = 0;
+    r->slice_ctrl.request = 1;
     __asm__ __volatile__("" ::: "memory");
 
     printf("  Set request=1\n");
-    printf("  slice_ctrl.all after: 0x%x\n", __rseq_abi.slice_ctrl.all);
-    printf("  request=%u, granted=%u\n",
-           __rseq_abi.slice_ctrl.request,
-           __rseq_abi.slice_ctrl.granted);
 
-    /* Try a syscall */
-    printf("\n  Calling getpid()...\n");
-    getpid();
+    /* Do CPU-bound work to trigger actual preemption */
+    int grants = 0;
+    volatile unsigned long counter = 0;
+    time_t start = time(NULL);
+    printf("  Running CPU-bound work for 2 seconds...\n");
 
-    __asm__ __volatile__("" ::: "memory");
-    printf("  After syscall:\n");
-    printf("  slice_ctrl.all: 0x%x\n", __rseq_abi.slice_ctrl.all);
-    printf("  request=%u, granted=%u\n",
-           __rseq_abi.slice_ctrl.request,
-           __rseq_abi.slice_ctrl.granted);
-
-    if (__rseq_abi.slice_ctrl.granted) {
-        printf("\n✓✓✓ GRANT DETECTED!\n");
-    } else {
-        printf("\n✗ No grant (this is the problem)\n");
+    while (time(NULL) - start < 2) {
+        r->slice_ctrl.request = 1;
+        for (int j = 0; j < 10000; j++) {
+            counter++;
+        }
+        __asm__ __volatile__("" ::: "memory");
+        if (r->slice_ctrl.granted) {
+            grants++;
+            r->slice_ctrl.granted = 0;
+        }
     }
 
-    return 0;
+    printf("  Iterations: %lu\n", counter);
+    printf("  Grants detected: %d\n", grants);
+
+    if (grants > 0) {
+        printf("\n✓✓✓ GRANT DETECTED! Got %d grants.\n", grants);
+        return 0;
+    } else {
+        printf("\n⚠ No grants during test (may need more CPU contention)\n");
+        return 1;
+    }
 }

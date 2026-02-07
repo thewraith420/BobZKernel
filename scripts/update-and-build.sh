@@ -131,73 +131,104 @@ make mrproper
 echo -e "${GREEN}✓ Build directory cleaned${NC}"
 echo ""
 
-# Step 3: Apply patches
-echo -e "${BLUE}═══ Step 3/7: Applying CachyOS Patches ═══${NC}"
-cd "$BASE_DIR"
-./scripts/apply-patches.sh "$KERNEL_VERSION" --force || {
-    echo -e "${RED}Patch application failed!${NC}"
-    exit 1
-}
-echo -e "${GREEN}✓ Patches applied${NC}"
-echo ""
-
-# Step 4: Verify patches
-echo -e "${BLUE}═══ Step 4/7: Verifying Patches ═══${NC}"
-./scripts/verify-patches.sh "$KERNEL_VERSION" || {
-    echo -e "${RED}Patch verification failed!${NC}"
-    echo -e "${YELLOW}Fix the issues reported above before continuing${NC}"
-    exit 1
-}
-echo -e "${GREEN}✓ Patches verified${NC}"
-echo ""
-
-# Step 4.4: Fix build conflicts from patch application
-echo -e "${BLUE}═══ Fixing Build Conflicts ═══${NC}"
-./scripts/fix-build-conflicts.sh "$BASE_DIR/builds/linux-$KERNEL_VERSION"
-echo ""
-
-# Step 4.5: Apply cluster-aware NVMe IRQ optimization backport
-echo -e "${BLUE}═══ Applying NVMe Cluster-Aware IRQ Optimization ═══${NC}"
-./scripts/apply-cluster-aware-backport.sh || {
-    echo -e "${YELLOW}⚠ Cluster-aware backport failed - continuing without it${NC}"
-}
-echo ""
-
-# Step 4.6: Apply Revocable Resource Management patch
-echo -e "${BLUE}═══ Applying Revocable Resource Management ═══${NC}"
-cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
-if patch -p1 --dry-run < "$BASE_DIR/patches/0001-revocable-resource-management.patch" > /dev/null 2>&1; then
-    patch -p1 < "$BASE_DIR/patches/0001-revocable-resource-management.patch"
-    echo -e "${GREEN}✓ Revocable Resource Management applied${NC}"
-else
-    echo -e "${YELLOW}⚠ Revocable patch already applied or conflicts detected - skipping${NC}"
-fi
-echo ""
-
-# Step 4.7: Apply RSEQ Time Slice Extension patch (experimental - rseq-timeslice branch only)
-BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
-if [ "$BRANCH" = "rseq-timeslice" ]; then
-    echo -e "${BLUE}═══ Applying RSEQ Time Slice Extension ═══${NC}"
+# Step 3: Apply patches (skip if --resume and patches already applied)
+if [ "$RESUME_BUILD" = true ]; then
+    echo -e "${BLUE}═══ Step 3/7: Checking if Patches Already Applied ═══${NC}"
     cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
-    if patch -p1 --dry-run < "$BASE_DIR/patches/0002-rseq-timeslice-extension.patch" > /dev/null 2>&1; then
-        patch -p1 < "$BASE_DIR/patches/0002-rseq-timeslice-extension.patch"
-        echo -e "${GREEN}✓ RSEQ Time Slice Extension applied${NC}"
+    # Check if a key file from BORE patch exists to detect if patches are applied
+    if grep -q "CONFIG_SCHED_BORE" kernel/sched/fair.c 2>/dev/null; then
+        echo -e "${GREEN}✓ Patches already applied (detected BORE scheduler code)${NC}"
+        echo -e "${YELLOW}Skipping patch application in resume mode${NC}"
+        SKIP_PATCHES=true
     else
-        echo -e "${YELLOW}⚠ RSEQ patch already applied or conflicts detected - skipping${NC}"
+        echo -e "${YELLOW}Patches not detected, will apply${NC}"
+        SKIP_PATCHES=false
     fi
+    echo ""
+else
+    SKIP_PATCHES=false
+fi
+
+if [ "$SKIP_PATCHES" = false ]; then
+    echo -e "${BLUE}═══ Step 3/7: Applying CachyOS Patches ═══${NC}"
+    cd "$BASE_DIR"
+    ./scripts/apply-patches.sh "$KERNEL_VERSION" --force || {
+        echo -e "${RED}Patch application failed!${NC}"
+        exit 1
+    }
+    echo -e "${GREEN}✓ Patches applied${NC}"
     echo ""
 fi
 
-# Step 4.8: Apply Scheduler vruntime field name fixes
-echo -e "${BLUE}═══ Applying Scheduler vruntime Fixes ═══${NC}"
-cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
-if patch -p1 --dry-run < "$BASE_DIR/patches/0004-fix-scheduler-vruntime-field-names.patch" > /dev/null 2>&1; then
-    patch -p1 < "$BASE_DIR/patches/0004-fix-scheduler-vruntime-field-names.patch"
-    echo -e "${GREEN}✓ Scheduler vruntime fixes applied${NC}"
+# Step 4: Verify patches (skip if patches were skipped)
+if [ "$SKIP_PATCHES" = false ]; then
+    echo -e "${BLUE}═══ Step 4/7: Verifying Patches ═══${NC}"
+    ./scripts/verify-patches.sh "$KERNEL_VERSION" || {
+        echo -e "${RED}Patch verification failed!${NC}"
+        echo -e "${YELLOW}Fix the issues reported above before continuing${NC}"
+        exit 1
+    }
+    echo -e "${GREEN}✓ Patches verified${NC}"
+    echo ""
 else
-    echo -e "${YELLOW}⚠ Scheduler vruntime patch already applied or conflicts detected - skipping${NC}"
+    echo -e "${BLUE}═══ Step 4/7: Skipping Patch Verification ═══${NC}"
+    echo -e "${YELLOW}Patches already applied${NC}"
+    echo ""
 fi
+
+# Step 4.4: Fix build conflicts from patch application
+echo -e "${BLUE}═══ Fixing Build Conflicts ═══${NC}"
+"$BASE_DIR/scripts/fix-build-conflicts.sh" "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 echo ""
+
+if [ "$SKIP_PATCHES" = false ]; then
+    # Step 4.5: Apply cluster-aware NVMe IRQ optimization backport
+    echo -e "${BLUE}═══ Applying NVMe Cluster-Aware IRQ Optimization ═══${NC}"
+    ./scripts/apply-cluster-aware-backport.sh || {
+        echo -e "${YELLOW}⚠ Cluster-aware backport failed - continuing without it${NC}"
+    }
+    echo ""
+
+    # Step 4.6: Apply Revocable Resource Management patch
+    echo -e "${BLUE}═══ Applying Revocable Resource Management ═══${NC}"
+    cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+    if patch -p1 --dry-run < "$BASE_DIR/patches/0001-revocable-resource-management.patch" > /dev/null 2>&1; then
+        patch -p1 < "$BASE_DIR/patches/0001-revocable-resource-management.patch"
+        echo -e "${GREEN}✓ Revocable Resource Management applied${NC}"
+    else
+        echo -e "${YELLOW}⚠ Revocable patch already applied or conflicts detected - skipping${NC}"
+    fi
+    echo ""
+
+    # Step 4.7: Apply RSEQ Time Slice Extension patch (experimental - rseq-timeslice branch only)
+    BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
+    if [ "$BRANCH" = "rseq-timeslice" ]; then
+        echo -e "${BLUE}═══ Applying RSEQ Time Slice Extension ═══${NC}"
+        cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+        if patch -p1 --dry-run < "$BASE_DIR/patches/0002-rseq-timeslice-extension.patch" > /dev/null 2>&1; then
+            patch -p1 < "$BASE_DIR/patches/0002-rseq-timeslice-extension.patch"
+            echo -e "${GREEN}✓ RSEQ Time Slice Extension applied${NC}"
+        else
+            echo -e "${YELLOW}⚠ RSEQ patch already applied or conflicts detected - skipping${NC}"
+        fi
+        echo ""
+    fi
+
+    # Step 4.8: Apply Scheduler vruntime field name fixes
+    echo -e "${BLUE}═══ Applying Scheduler vruntime Fixes ═══${NC}"
+    cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+    if patch -p1 --dry-run < "$BASE_DIR/patches/0004-fix-scheduler-vruntime-field-names.patch" > /dev/null 2>&1; then
+        patch -p1 < "$BASE_DIR/patches/0004-fix-scheduler-vruntime-field-names.patch"
+        echo -e "${GREEN}✓ Scheduler vruntime fixes applied${NC}"
+    else
+        echo -e "${YELLOW}⚠ Scheduler vruntime patch already applied or conflicts detected - skipping${NC}"
+    fi
+    echo ""
+else
+    echo -e "${BLUE}═══ Skipping Additional Patch Application ═══${NC}"
+    echo -e "${YELLOW}Resume mode: patches already applied${NC}"
+    echo ""
+fi
 
 # Step 5: Apply config and build
 echo -e "${BLUE}═══ Step 5/7: Building Kernel ═══${NC}"

@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Quick RSEQ Grant Test - 5 second version
+ *
+ * Uses proper TLS access via __rseq_offset and CPU-bound work
+ * to trigger actual scheduler preemption (not voluntary yield).
  */
 
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/prctl.h>
 #include <sched.h>
+#include <time.h>
 
 #ifndef PR_RSEQ_SLICE_EXTENSION
 #define PR_RSEQ_SLICE_EXTENSION 79
@@ -44,7 +49,15 @@ struct rseq {
     char end[];
 } __attribute__((aligned(32)));
 
-extern __thread struct rseq __rseq_abi __attribute__((weak));
+/* Use __rseq_offset to properly locate RSEQ struct in TLS */
+extern ptrdiff_t __rseq_offset __attribute__((weak));
+
+static struct rseq *get_rseq(void)
+{
+    char *tls_base;
+    asm("mov %%fs:0, %0" : "=r"(tls_base));
+    return (struct rseq *)(tls_base + __rseq_offset);
+}
 
 static volatile int running = 1;
 static volatile unsigned long total_requests = 0;
@@ -55,26 +68,26 @@ static void *worker(void *arg)
     int tid = *(int*)arg;
     unsigned long local_grants = 0;
     unsigned long local_requests = 0;
+    struct rseq *r = get_rseq();
 
     prctl(PR_RSEQ_SLICE_EXTENSION, PR_RSEQ_SLICE_EXTENSION_SET,
           PR_RSEQ_SLICE_EXT_ENABLE, 0, 0);
 
     while (running) {
-        __rseq_abi.slice_ctrl.all = 0;
-        __rseq_abi.slice_ctrl.request = 1;
+        r->slice_ctrl.all = 0;
+        r->slice_ctrl.request = 1;
         __asm__ __volatile__("" ::: "memory");
         local_requests++;
 
-        /* Do some work */
-        for (volatile int i = 0; i < 1000; i++);
+        /* CPU-bound work to trigger actual scheduler preemption */
+        for (volatile int i = 0; i < 50000; i++);
 
         /* Check grant */
         __asm__ __volatile__("" ::: "memory");
-        if (__rseq_abi.slice_ctrl.granted) {
+        if (r->slice_ctrl.granted) {
             local_grants++;
+            r->slice_ctrl.granted = 0;  /* Clear for next iteration */
         }
-
-        sched_yield();
     }
 
     __sync_fetch_and_add(&total_requests, local_requests);
@@ -91,16 +104,21 @@ int main(void)
 {
     pthread_t threads[4];
     int ids[4] = {0, 1, 2, 3};
+    struct rseq *r;
 
     printf("Quick RSEQ Grant Test (5 seconds)\n");
     printf("==================================\n\n");
 
-    if (!&__rseq_abi) {
-        printf("✗ No RSEQ support\n");
+    if (!&__rseq_offset) {
+        printf("✗ glibc RSEQ offset not available\n");
         return 1;
     }
 
-    printf("Starting 4 worker threads...\n");
+    r = get_rseq();
+    printf("RSEQ struct at: %p (via __rseq_offset=%td)\n", (void *)r, __rseq_offset);
+    printf("  cpu_id: %u, flags: 0x%x\n\n", r->cpu_id, r->flags);
+
+    printf("Starting 4 worker threads (CPU-bound work)...\n");
     for (int i = 0; i < 4; i++) {
         pthread_create(&threads[i], NULL, worker, &ids[i]);
     }

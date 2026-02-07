@@ -6,13 +6,16 @@
  * - Tight rendering-style loops
  * - Critical sections that need to complete
  * - Scheduler pressure from competing threads
- * - Explicit use of rseq_slice_yield to trigger grant path
+ * - CPU-bound work to trigger actual scheduler preemption
+ *
+ * Uses proper TLS access via __rseq_offset (not __rseq_abi directly).
  */
 
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -55,7 +58,15 @@ struct rseq {
     char end[];
 } __attribute__((aligned(32)));
 
-extern __thread struct rseq __rseq_abi __attribute__((weak));
+/* Use __rseq_offset to properly locate RSEQ struct in TLS */
+extern ptrdiff_t __rseq_offset __attribute__((weak));
+
+static struct rseq *get_rseq(void)
+{
+    char *tls_base;
+    asm("mov %%fs:0, %0" : "=r"(tls_base));
+    return (struct rseq *)(tls_base + __rseq_offset);
+}
 
 struct workload_stats {
     volatile unsigned long frames_rendered;
@@ -82,6 +93,7 @@ static void *render_thread(void *arg)
     int thread_id = *(int *)arg;
     unsigned long local_grants = 0;
     unsigned long local_requests = 0;
+    struct rseq *r = get_rseq();
 
     printf("  Render thread %d started\n", thread_id);
 
@@ -94,33 +106,28 @@ static void *render_thread(void *arg)
 
     while (running) {
         /* Start of critical section - simulate frame update */
-        __rseq_abi.slice_ctrl.all = 0;
+        r->slice_ctrl.all = 0;
         __asm__ __volatile__("" ::: "memory");
 
         /* Request slice extension to avoid preemption during frame */
-        __rseq_abi.slice_ctrl.request = 1;
+        r->slice_ctrl.request = 1;
         __asm__ __volatile__("" ::: "memory");
         local_requests++;
 
-        /* Do critical rendering work */
-        do_frame_work(5000);
+        /* Do critical rendering work - CPU-bound to trigger preemption */
+        do_frame_work(50000);
 
         /* Check if we got the grant */
         __asm__ __volatile__("" ::: "memory");
-        if (__rseq_abi.slice_ctrl.granted) {
+        if (r->slice_ctrl.granted) {
             local_grants++;
+            r->slice_ctrl.granted = 0;  /* Clear for next frame */
             __sync_fetch_and_add(&global_stats.slice_grants, 1);
         }
 
         /* Frame complete */
         __sync_fetch_and_add(&global_stats.frames_rendered, 1);
         __sync_fetch_and_add(&global_stats.slice_requests, 1);
-
-        /* Yield to trigger scheduler - this is where grants would happen */
-        syscall(__NR_rseq_slice_yield);
-
-        /* Small delay to simulate 60 FPS (~16ms per frame) */
-        usleep(100);
     }
 
     printf("  Render thread %d: %lu grants / %lu requests (%.1f%%)\n",
@@ -184,14 +191,19 @@ int main(void)
     pthread_t monitor;
     int thread_ids[8];
     int num_cpus;
+    struct rseq *r;
 
     printf("RSEQ Synthetic Workload Test\n");
     printf("============================\n\n");
 
-    if (!&__rseq_abi) {
-        fprintf(stderr, "✗ glibc RSEQ not available\n");
+    if (!&__rseq_offset) {
+        fprintf(stderr, "✗ glibc RSEQ offset not available\n");
         return 1;
     }
+
+    r = get_rseq();
+    printf("RSEQ struct at: %p (via __rseq_offset=%td)\n", (void *)r, __rseq_offset);
+    printf("  cpu_id: %u, flags: 0x%x\n\n", r->cpu_id, r->flags);
 
     /* Enable for main thread */
     if (prctl(PR_RSEQ_SLICE_EXTENSION, PR_RSEQ_SLICE_EXTENSION_SET,
@@ -209,7 +221,7 @@ int main(void)
     printf("  - 4 render threads (simulating game engine workers)\n");
     printf("  - 4 stress threads (simulating background load)\n");
     printf("  - Each render thread requests slice extensions\n");
-    printf("  - Uses rseq_slice_yield() syscall to trigger grant path\n\n");
+    printf("  - CPU-bound work triggers actual scheduler preemption\n\n");
 
     /* Start render threads (these request slice extensions) */
     printf("Starting render threads...\n");

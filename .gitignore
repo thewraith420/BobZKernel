@@ -51,3 +51,4 @@ installer-*/
 
 # Install logs
 install-*.log
+tests/
