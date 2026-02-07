@@ -805,14 +805,13 @@ index 2452b7366b00..356513220af0 100644
 +		.proc_handler	= proc_dointvec_minmax,
 +		.extra1		= (void *)&rseq_slice_ext_nsecs_min,
 +		.extra2		= (void *)&rseq_slice_ext_nsecs_max,
-+	},
-+	{}
++	}
 +};
 +
 +static void __init rseq_slice_sysctl_init(void)
 +{
 +	if (rseq_slice_extension_enabled())
-+		register_sysctl("kernel", rseq_slice_ext_sysctl);
++		register_sysctl_init("kernel", rseq_slice_ext_sysctl);
 +}
 +#else /* CONFIG_SYSCTL */
 +static inline void rseq_slice_sysctl_init(void) { }
