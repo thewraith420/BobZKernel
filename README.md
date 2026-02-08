@@ -31,7 +31,6 @@ Custom optimized Linux kernel 6.18.9 with RSEQ slice extension, BORE scheduler, 
 - **Device**: Lenovo LOQ 15IRH8
 - **CPU**: Intel i5-13420H (13th Gen, 8 cores/12 threads)
 - **GPU**: NVIDIA GeForce RTX 3050 6GB
-- **RAM**: 16GB
 - **OS**: Debian GNU/Linux 13 (trixie)
 
 ## Installation
@@ -39,7 +38,6 @@ Custom optimized Linux kernel 6.18.9 with RSEQ slice extension, BORE scheduler, 
 ### Build from Source
 
 ```bash
-cd /home/bob/buildstuff/BobZKernel
 ./scripts/update-and-build.sh --yes
 ```
 
@@ -79,7 +77,7 @@ grep CONFIG_LTO_CLANG_FULL /boot/config-$(uname -r)
 ### Run RSEQ Tests
 
 ```bash
-cd /home/bob/buildstuff/BobZKernel/tests/rseq-slice-extension
+cd tests/rseq-slice-extension
 ./run_all_tests.sh
 ```
 
@@ -163,15 +161,6 @@ rm -rf ~/.cache/ccache/*
 - Ensure CONFIG_RSEQ_SLICE_EXTENSION=y in .config
 - Check dmesg for sysctl registration errors
 - See CONTEXT/SYSCTL-FIX-SESSION.md for details
-
-## System Optimizations (External)
-
-Additional system-level optimizations applied outside the kernel:
-
-- **TLP** (`/etc/tlp.conf`) - USB autosuspend, battery thresholds (20-85%), NMI watchdog disabled
-- **Driver Blacklists** - Ghost fingerprint sensor (spd5118), PC speaker
-- **ALSA Fixes** - Fixed duplicate label in udev rules
-- **Chrome** - Hardware acceleration workaround for PDF printing
 
 ## Credits
 
