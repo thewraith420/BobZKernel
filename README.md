@@ -1,114 +1,120 @@
-# BobZKernel - Optimized Linux 6.18.7+
+# BobZKernel - Optimized Linux 6.18.9
 
-Custom optimized Linux kernel 6.18.7+ with performance patches, NVMe optimization, and multi-architecture support.
+Custom optimized Linux kernel 6.18.9 with RSEQ slice extension, BORE scheduler, and performance optimizations for Lenovo LOQ 15IRH8.
 
 ## Features
 
+### RSEQ Slice Extension (Primary Feature)
+- **Syscall 470** (`rseq_slice_yield`) - New syscall for timeslice management
+- **prctl Interface** - Per-process control of slice extension
+- **Runtime Tunable** - `/proc/sys/kernel/rseq_slice_extension_nsec` (default: 30000 ns)
+- **CONFIG_RSEQ_SLICE_EXTENSION=y** - Enabled by default
+
 ### Performance Optimizations
 - **BORE Scheduler** - Burst-Oriented Response Enhancer for desktop responsiveness
-- **BBRv3** - TCP congestion control for improved network performance
-- **Full LTO** - Link-Time Optimization using LLVM/Clang 20.1.2
-- **1000Hz Timer** - Better latency for interactive workloads
-- **CachyOS Patches** - Additional performance and crypto optimizations
-- **NVMe Cluster-Aware IRQ Optimization** - 10-15% NVMe performance gain on modern CPUs (Intel 12th gen+, AMD Ryzen multi-CCD)
+- **CachyOS Patches** - Additional performance optimizations (CONFIG_CACHY=y)
+- **Full LTO** - Link-Time Optimization using LLVM/Clang-19
+- **1000Hz Timer** - Better latency for interactive workloads (CONFIG_HZ=1000)
+- **Dynamic Preemption** - CONFIG_PREEMPT_DYNAMIC=y
 
-### Architecture Support
-- **march=native** - CPU-specific optimizations for Intel Raptor Lake (13th Gen)
-- **Generic x86-64-v3** - Universal build compatible with all modern CPUs with cluster-aware NVMe optimization
-- **Pixel Slate optimized** - Lean config for Intel Skylake/Kaby Lake (WiFi 7265 only)
-- **Multiple installers** - Choose the right build for your hardware
+### CPU Optimizations
+- **march=native** - CPU-specific optimizations for Intel i5-13420H (13th Gen Raptor Lake)
+- **CONFIG_X86_NATIVE_CPU=y** - Native CPU instruction set
+
+### Power Management
+- **CONFIG_CPU_FREQ=y** - Dynamic frequency scaling
+- **CONFIG_PM=y** - Power management support
+- **CONFIG_ACPI_MADT_WAKEUP=y** - ACPI wake optimization
+
+## Target Hardware
+
+- **Device**: Lenovo LOQ 15IRH8
+- **CPU**: Intel i5-13420H (13th Gen, 8 cores/12 threads)
+- **GPU**: NVIDIA GeForce RTX 3050 6GB
+- **RAM**: 16GB
+- **OS**: Debian GNU/Linux 13 (trixie)
 
 ## Installation
 
-### For End Users (Prebuilt Installer)
-
-**Choose the installer for your CPU:**
-
-#### Intel 12th/13th Gen (march=native)
-```bash
-# Download march=native package
-wget https://github.com/thewraith420/BobZKernel/releases/download/v6.18.6-master/BobZKernel-6.18.6-march-native.tar.gz
-
-# Extract and install
-tar -xzf BobZKernel-6.18.6-march-native.tar.gz
-sudo cp vmlinuz-6.18.6-BobZKernel /boot/
-sudo cp config-6.18.6-BobZKernel /boot/
-sudo update-grub
-```
-
-#### All Other CPUs (AMD, Intel 11th Gen and older, Generic x86-64)
-```bash
-# Download generic package with AMD GPU support
-wget https://github.com/thewraith420/BobZKernel/releases/download/v6.18.6-generic/BobZKernel-6.18.6-generic-x86-64.tar.gz
-
-# Extract and install
-tar -xzf BobZKernel-6.18.6-generic-x86-64.tar.gz
-sudo cp vmlinuz-6.18.6-BobZKernel-generic /boot/
-sudo cp config-6.18.6-BobZKernel-generic /boot/
-sudo update-grub
-```
-
-Installation includes:
-- Kernel image and configuration file
-- Manual bootloader update with `sudo update-grub`
-- Preserves your existing kernel for safe fallback
-
-### For Developers (Build from Source)
-
-#### Automated Build Workflow
+### Build from Source
 
 ```bash
 cd /home/bob/buildstuff/BobZKernel
 ./scripts/update-and-build.sh --yes
 ```
 
-This complete workflow:
-1. Updates kernel source from upstream
-2. Applies CachyOS performance patches
-3. Applies NVMe cluster-aware IRQ optimization (automatic backport for 6.18.x)
-4. Verifies patches applied correctly
-5. Builds kernel with all optimizations
-6. Automatically rebuilds DKMS modules (NVIDIA, VMware, Legion, xpadneo) with Clang
-7. Offers portable installer creation or direct installation
-
-#### Manual Build Steps
-
+For incremental builds (skip upstream update):
 ```bash
-# Update kernel source
-./scripts/update-kernel-source.sh 6.18
-
-# Build kernel
-./scripts/build-kernel.sh
-
-# Install kernel
-sudo ./scripts/install-kernel.sh
+./scripts/update-and-build.sh --resume --yes
 ```
 
-#### Create Portable Installer
+### Install After Build
 
 ```bash
-# After building the kernel:
-./scripts/create-portable-installer.sh
+# Use the portable installer
+cd installer-6.18.9-BobZKernel*/
+sudo ./install.sh
 ```
 
-This creates a portable tarball installer that:
-- Auto-detects the target system's distribution
-- Includes all kernel files and modules
-- Provides install/uninstall scripts
-- Works across Ubuntu, Debian, Fedora, Arch, and more
+## Verification
 
-## System Requirements
+After installation and reboot:
 
-- **Kernel:** Linux 6.18.6
-- **Compiler:** Clang 20.1.2 with LLVM
-- **Target CPUs:**
-  - Intel 12th/13th Gen (Alder Lake/Raptor Lake) - march=native build
-  - Any modern x86-64-v3 CPU - generic build (2015+)
-- **GPU Support:**
-  - NVIDIA (via external driver)
-  - AMD Radeon (radeon module)
-  - AMD AMDGPU (amdgpu module)
-  - Intel integrated graphics
+```bash
+# Check kernel version
+uname -r
+# Expected: 6.18.9-BobZKernel+
+
+# Verify RSEQ slice extension sysctl
+cat /proc/sys/kernel/rseq_slice_extension_nsec
+# Expected: 30000
+
+# Verify BORE scheduler
+grep -i bore /proc/sched_debug 2>/dev/null || dmesg | grep -i bore
+
+# Check LTO was used
+grep CONFIG_LTO_CLANG_FULL /boot/config-$(uname -r)
+```
+
+### Run RSEQ Tests
+
+```bash
+cd /home/bob/buildstuff/BobZKernel/tests/rseq-slice-extension
+./run_all_tests.sh
+```
+
+## Applied Patches
+
+Three custom patches are applied in order:
+
+1. **9001-revocable-resource-management.patch** - Revocable resource management infrastructure
+2. **9002-rseq-timeslice-extension.patch** - RSEQ slice extension feature (21 files, 937 lines)
+3. **9003-rseq-timeslice-debian-fixes.patch** - Debian glibc 2.41 compatibility
+
+## Build System
+
+### Automated Build Fixes
+
+The build system includes `fix-build-conflicts.sh` with 12 automated fixes:
+
+1. Remove init/Kconfig merge conflict markers
+2. Remove thread_info.h merge conflict markers
+3. Remove kernel/rseq.c merge conflict markers
+4. Remove duplicate migration_cost definition from fair.c
+5. Fix vruntime field names (min_vruntime → zero_vruntime)
+6. Remove bore.c merge conflict markers
+7. Remove duplicate static from revocable.c
+8. Update hrtimer API (hrtimer_init → hrtimer_setup)
+9. Update sysctl API (register_sysctl → register_sysctl_init)
+10. Repair broken comment block in fair.c
+11. Add missing #endif for CONFIG_RSEQ_SLICE_EXTENSION
+12. Remove empty `{}` terminator from sysctl array
+
+### Build Requirements
+
+- **Compiler**: Clang/LLVM-19
+- **Build Tool**: ccache (optional, for faster rebuilds)
+- **OS**: Debian 13 (trixie) or compatible
 
 ## Directory Structure
 
@@ -119,128 +125,59 @@ BobZKernel/
 ├── scripts/
 │   ├── update-and-build.sh            # Complete automated workflow
 │   ├── build-kernel.sh                # Build kernel only
-│   ├── install-kernel.sh              # Install kernel locally
-│   ├── create-portable-installer.sh   # Create portable installer package
-│   ├── update-kernel-source.sh        # Fetch upstream updates
-│   ├── apply-patches.sh               # Apply CachyOS patches
-│   ├── verify-patches.sh              # Verify patch integrity
-│   └── auto-fix-patches.sh            # Auto-fix common patch issues
+│   ├── fix-build-conflicts.sh         # Automated build fixes
+│   └── ...
 ├── patches/
-│   ├── cachyos-6.18/                  # CachyOS performance patches
-│   └── patch-config.sh                # Patch configuration
+│   └── cachyos-6.18/                  # CachyOS + RSEQ patches (9001-9003)
 ├── configs/                           # Saved kernel configs
-└── docs/
-    ├── UPDATE-WORKFLOW.md             # Detailed workflow documentation
-    └── QUICK-START.md                 # Quick reference guide
-```
-
-## Build Variants
-
-### march=native (Intel Raptor Lake 13th Gen)
-- Optimized for Intel Core i5-13420H and similar CPUs
-- Maximum performance on target hardware
-- Full cluster-aware NVMe optimization
-- **Version:** 6.18.7+-BobZKernel
-- **Branch:** master
-
-### Generic x86-64-v3 (All Modern CPUs)
-- Compatible with all modern x86-64 CPUs (2015+)
-- Portable across different Intel/AMD systems
-- AMD GPU driver support (radeon + amdgpu)
-- Includes cluster-aware NVMe optimization (fallback gracefully on older CPUs)
-- **Version:** 6.18.7+-BobZKernel-generic
-- **Branch:** generic-build
-
-### Pixel Slate (Intel Skylake/Kaby Lake)
-- Optimized for Google Pixel Slate with Intel Wireless 7265
-- Trimmed config: only Intel WiFi/Bluetooth/graphics drivers
-- No VMware, PlayStation, or Ethernet drivers
-- Smallest kernel size and fastest build times
-- **Version:** 6.18.7+-BobZKernel
-- **Branch:** pixel-slate
-
-### Workpc (Custom Config)
-- Organization-specific optimizations
-- **Branch:** workpc
-
-## Verification
-
-After installation, verify your kernel:
-
-```bash
-# Check kernel version
-uname -r
-
-# Check compiler used
-cat /proc/version
-
-# Verify BORE scheduler is active
-cat /sys/kernel/sched_features | grep -i bore
-
-# Check timer frequency (should show 1000)
-grep CONFIG_HZ= /boot/config-$(uname -r)
-
-# Verify LTO was used
-grep CONFIG_LTO_CLANG_FULL /boot/config-$(uname -r)
-
-# Check DKMS modules
-dkms status
+├── tests/
+│   └── rseq-slice-extension/          # RSEQ feature tests
+└── CONTEXT/                           # Project documentation
+    ├── PROJECT-OVERVIEW.md
+    ├── BUILD-STATUS.md
+    ├── BUILD-TROUBLESHOOTING.md
+    ├── QUICK-START.md
+    ├── GIT-COMMITS.md
+    └── SYSCTL-FIX-SESSION.md
 ```
 
 ## Troubleshooting
 
-### DKMS Module Issues
-DKMS modules are automatically detected and rebuilt with Clang during installation. The installer:
-- Scans `/usr/src/*/dkms.conf` for valid modules
-- Rebuilds only modules with actual source directories
-- Provides verbose output showing build status for each module
-- Gracefully handles individual module failures
+See `CONTEXT/BUILD-TROUBLESHOOTING.md` for detailed error solutions.
 
-If you still need manual rebuild after booting:
+### Common Issues
+
+**Build fails with scheduler errors:**
 ```bash
-# Manual rebuild with Clang
-sudo dkms remove <module>/<version> -k $(uname -r)
-sudo CC=clang dkms install <module>/<version> -k $(uname -r)
+# Fix is automated, but if needed manually:
+sed -i 's/cfs_rq->min_vruntime/cfs_rq->zero_vruntime/g' builds/linux-6.18/kernel/sched/fair.c
 ```
 
-### Build Logs
-Build logs are saved with timestamps in the build directory for troubleshooting.
-
-### VMware Module Building
-If VMware modules fail to build during installation, you can rebuild them with:
+**Stale ccache objects:**
 ```bash
-# Rebuild VMware modules for current kernel
-cd /tmp
-mkdir -p vmware-build
-cd vmware-build
-tar -xf /usr/lib/vmware/modules/source/vmmon.tar
-tar -xf /usr/lib/vmware/modules/source/vmnet.tar
-cd vmmon-only && make && sudo make install KVER=$(uname -r)
-cd ../vmnet-only && make && sudo make install KVER=$(uname -r)
+rm -rf ~/.cache/ccache/*
+./scripts/update-and-build.sh --resume --yes
 ```
 
-Alternatively, if you have the BobZKernel source available locally:
-```bash
-# Rebuild with explicit kernel source
-sudo /path/to/BobZKernel/scripts/build-vmware-modules.sh $(uname -r)
-```
+**RSEQ sysctl not appearing:**
+- Ensure CONFIG_RSEQ_SLICE_EXTENSION=y in .config
+- Check dmesg for sysctl registration errors
+- See CONTEXT/SYSCTL-FIX-SESSION.md for details
 
-## Contributing
+## System Optimizations (External)
 
-Contributions welcome! Please ensure:
-- Kernel builds successfully with LLVM=1
-- All patches apply cleanly
-- DKMS modules rebuild correctly
-- Documentation is updated
+Additional system-level optimizations applied outside the kernel:
+
+- **TLP** (`/etc/tlp.conf`) - USB autosuspend, battery thresholds (20-85%), NMI watchdog disabled
+- **Driver Blacklists** - Ghost fingerprint sensor (spd5118), PC speaker
+- **ALSA Fixes** - Fixed duplicate label in udev rules
+- **Chrome** - Hardware acceleration workaround for PDF printing
 
 ## Credits
 
 - **Linux Kernel** - Linus Torvalds and contributors
-- **CachyOS Team** - Performance patches ([BORE scheduler](https://github.com/CachyOS/linux-cachyos), BBRv3, optimizations)
-- **NVMe Cluster-Aware Optimization** - Wangyang Guo (Intel) - cluster-aware IRQ affinity for modern multi-cluster CPUs
+- **CachyOS Team** - BORE scheduler and performance patches
 - **LLVM Project** - Clang/LLVM compiler infrastructure
-- **LenovoLegionLinux** - [johnfanv2](https://github.com/johnfanv2/LenovoLegionLinux) - Lenovo Legion laptop driver
-- **hid-xpadneo** - [atar-axis](https://github.com/atar-axis/xpadneo) - Advanced Xbox controller driver
 
 ## License
 
