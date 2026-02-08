@@ -31,6 +31,7 @@ Custom optimized Linux kernel 6.18.9 with RSEQ slice extension, BORE scheduler, 
 - **Device**: Lenovo LOQ 15IRH8
 - **CPU**: Intel i5-13420H (13th Gen, 8 cores/12 threads)
 - **GPU**: NVIDIA GeForce RTX 3050 6GB
+- **RAM**: 8GB
 - **OS**: Debian GNU/Linux 13 (trixie)
 
 ## Installation
@@ -165,6 +166,7 @@ rm -rf ~/.cache/ccache/*
 ## Credits
 
 - **Linux Kernel** - Linus Torvalds and contributors
+- **Google LLC** - RSEQ slice extension and revocable resource management (Copyright 2025)
 - **CachyOS Team** - BORE scheduler and performance patches
 - **LLVM Project** - Clang/LLVM compiler infrastructure
 
