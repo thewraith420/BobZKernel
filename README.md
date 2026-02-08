@@ -166,7 +166,8 @@ rm -rf ~/.cache/ccache/*
 ## Credits
 
 - **Linux Kernel** - Linus Torvalds and contributors
-- **Google LLC** - RSEQ slice extension and revocable resource management (Copyright 2025)
+- **Thomas Gleixner** - RSEQ time slice extension mechanism
+- **Google LLC** - Revocable resource management (Copyright 2025)
 - **CachyOS Team** - BORE scheduler and performance patches
 - **LLVM Project** - Clang/LLVM compiler infrastructure
 
