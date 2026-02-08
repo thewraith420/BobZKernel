@@ -21,6 +21,11 @@ Custom optimized Linux kernel 6.18.9 with RSEQ slice extension, BORE scheduler, 
 - **march=native** - CPU-specific optimizations for Intel i5-13420H (13th Gen Raptor Lake)
 - **CONFIG_X86_NATIVE_CPU=y** - Native CPU instruction set
 
+### Memory & Storage
+- **ZRAM** - Compressed RAM swap (CONFIG_ZRAM=y, zstd compression)
+- **ZSWAP** - Compressed swap cache (CONFIG_ZSWAP=y, zstd compression, enabled by default)
+- **BBR TCP Congestion Control** - CONFIG_TCP_CONG_BBR=y, set as default
+
 ### Power Management
 - **CONFIG_CPU_FREQ=y** - Dynamic frequency scaling
 - **CONFIG_PM=y** - Power management support
