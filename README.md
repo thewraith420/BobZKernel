@@ -31,6 +31,10 @@ Custom optimized Linux kernel 6.18.9 with RSEQ slice extension, BORE scheduler, 
 - **CONFIG_PM=y** - Power management support
 - **CONFIG_ACPI_MADT_WAKEUP=y** - ACPI wake optimization
 
+### DKMS Modules (Auto-Rebuilt)
+- **xpadneo** - Advanced Xbox controller driver with rumble, battery reporting, and low-latency support
+- **NVIDIA drivers** - Automatically rebuilt with each kernel update
+
 ## Target Hardware
 
 - **Device**: Lenovo LOQ 15IRH8
@@ -175,6 +179,7 @@ rm -rf ~/.cache/ccache/*
 - **Tzung-Bi Shih (Google)** - Revocable resource management (Copyright 2025 Google LLC)
 - **CachyOS Team** - BORE scheduler and performance patches
 - **LLVM Project** - Clang/LLVM compiler infrastructure
+- **atar-axis** - [xpadneo](https://github.com/atar-axis/xpadneo) - Advanced Xbox controller driver
 
 ## License
 
