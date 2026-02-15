@@ -1,0 +1,67 @@
+# NVIDIA 590.48.01 Linux 6.19 Compatibility Patch
+# 
+# Fixes two API changes in Linux 6.19:
+# 1. zone_device_page_init() now takes 3 arguments (page, pgmap, order)
+# 2. dev_pagemap_ops.page_free renamed to .folio_free with struct folio* argument
+#
+# Apply with: patch -p1 < nvidia-590.48.01-linux-6.19.patch
+# From /usr/src/nvidia-590.48.01/
+
+--- a/kernel-open/nvidia-uvm/uvm_hmm.c
++++ b/kernel-open/nvidia-uvm/uvm_hmm.c
+@@ -2140,7 +2140,7 @@
+ 
+         UVM_ASSERT(!page_count(dpage));
+         UVM_ASSERT(!dpage->zone_device_data);
+-        zone_device_page_init(dpage);
++        zone_device_page_init(dpage, page_pgmap(dpage), 0);
+         dpage->zone_device_data = gpu_chunk;
+         atomic64_inc(&va_block->hmm.va_space->hmm.allocated_page_count);
+     }
+--- a/kernel-open/nvidia-uvm/uvm_pmm_gpu.c
++++ b/kernel-open/nvidia-uvm/uvm_pmm_gpu.c
+@@ -3058,9 +3058,13 @@
+     UVM_ENTRY_RET(devmem_fault(vmf));
+ }
+ 
++static void devmem_folio_free(struct folio *folio) {
++    devmem_page_free(folio_page(folio, 0));
++}
++
+ static const struct dev_pagemap_ops uvm_pmm_devmem_ops =
+ {
+-    .page_free = devmem_page_free,
++    .folio_free = devmem_folio_free,
+     .migrate_to_ram = devmem_fault_entry,
+ };
+ 
+@@ -3163,9 +3167,13 @@
+     device_p2p_page_free(page);
+ }
+ 
++static void device_coherent_folio_free(struct folio *folio) {
++    device_coherent_page_free(folio_page(folio, 0));
++}
++
+ static const struct dev_pagemap_ops uvm_device_coherent_pgmap_ops =
+ {
+-    .page_free = device_coherent_page_free,
++    .folio_free = device_coherent_folio_free,
+ };
+ 
+ static NV_STATUS uvm_pmm_cdmm_init(uvm_parent_gpu_t *parent_gpu)
+@@ -3300,9 +3308,13 @@
+ // ARM
+ #if defined(CONFIG_PCI_P2PDMA) && defined(NV_STRUCT_PAGE_HAS_ZONE_DEVICE_DATA) && !defined(NVCPU_AARCH64)
+ 
++static void device_p2p_folio_free(struct folio *folio) {
++    device_p2p_page_free(folio_page(folio, 0));
++}
++
+ static const struct dev_pagemap_ops uvm_device_p2p_pgmap_ops =
+ {
+-    .page_free = device_p2p_page_free,
++    .folio_free = device_p2p_folio_free,
+ };
+ 
+ void uvm_pmm_gpu_device_p2p_init(uvm_parent_gpu_t *parent_gpu)
