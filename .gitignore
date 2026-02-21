@@ -16,9 +16,12 @@ Module.symvers
 
 # Build logs
 build-*.log
+build.log
+full-build-*.log
 
 # Generated installers (distribute via GitHub Releases)
 *-installer.sh
+*-installer/
 installer-*/
 
 # Temporary files
@@ -52,3 +55,21 @@ installer-*/
 # Install logs
 install-*.log
 tests/
+
+# Build directories
+builds/rseq-slice-preload/
+builds/tcmalloc-timeslice/
+
+# Patch backups and upstream references
+ignored_patches/
+patches/*/backup/
+patches/ignored/
+patches/rseq-timeslice-v6-upstream/
+
+# External source packages
+google-perftools-*/
+*.debian.tar.xz
+*.dsc
+
+# Config snapshots
+configs/.config-*-202*
