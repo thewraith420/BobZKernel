@@ -125,10 +125,19 @@ else
     echo ""
 fi
 
-# Step 2: Clean previous build artifacts (skip if resume)
+# Step 2: Clean previous build artifacts and reset source (skip if resume)
 if [ "$RESUME_BUILD" = false ]; then
     echo -e "${BLUE}═══ Step 2/8: Cleaning Build Directory ═══${NC}"
     cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+
+    # Reset source files to clean state (undo any previous patches)
+    if [ -d ".git" ]; then
+        echo -e "${YELLOW}Resetting source tree to clean state...${NC}"
+        git checkout -- .
+        git clean -fd
+        echo -e "${GREEN}✓ Source tree reset to clean state${NC}"
+    fi
+
     make mrproper
     echo -e "${GREEN}✓ Build directory cleaned${NC}"
     echo ""
@@ -229,29 +238,57 @@ cd "$BASE_DIR"
 echo -e "${GREEN}✓ Kernel built successfully${NC}"
 echo ""
 
-# Step 6: Install kernel
+# Step 6: Install or Package (optional)
 if [ "$SKIP_INSTALL" = false ]; then
-    echo -e "${BLUE}═══ Step 6/8: Installing Kernel ═══${NC}"
+    echo -e "${BLUE}═══ Step 6/8: Kernel Deployment ═══${NC}"
 
     if [ "$AUTO_YES" = false ]; then
-        read -p "Install kernel now? (y/N) " -n 1 -r
+        echo -e "${YELLOW}Choose deployment option:${NC}"
+        echo "  1) Install kernel on this system"
+        echo "  2) Create portable installer package"
+        echo "  3) Skip (do nothing)"
+        echo ""
+        read -p "Select option [1-3]: " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}Skipping kernel installation${NC}"
-            SKIP_INSTALL=true
-        fi
-    fi
 
-    if [ "$SKIP_INSTALL" = false ]; then
+        case $REPLY in
+            1)
+                echo -e "${BLUE}Installing kernel on this system...${NC}"
+                sudo ./scripts/install-kernel-6.19.sh || {
+                    echo -e "${RED}Kernel installation failed!${NC}"
+                    exit 1
+                }
+                echo -e "${GREEN}✓ Kernel installed on this system${NC}"
+                INSTALL_TYPE="local"
+                ;;
+            2)
+                echo -e "${BLUE}Creating portable installer package...${NC}"
+                ./scripts/create-portable-installer.sh 6.19 || {
+                    echo -e "${RED}Portable installer creation failed!${NC}"
+                    exit 1
+                }
+                echo -e "${GREEN}✓ Portable installer created${NC}"
+                INSTALL_TYPE="portable"
+                ;;
+            3|*)
+                echo -e "${YELLOW}Skipping deployment${NC}"
+                SKIP_INSTALL=true
+                INSTALL_TYPE="skipped"
+                ;;
+        esac
+    else
+        # AUTO_YES is true, install locally by default
         sudo ./scripts/install-kernel-6.19.sh || {
             echo -e "${RED}Kernel installation failed!${NC}"
             exit 1
         }
         echo -e "${GREEN}✓ Kernel installed${NC}"
+        INSTALL_TYPE="local"
     fi
     echo ""
 else
-    echo -e "${YELLOW}⊘ Skipping kernel installation${NC}"
+    echo -e "${YELLOW}⊘ Skipping kernel deployment${NC}"
+    INSTALL_TYPE="skipped"
     echo ""
 fi
 
@@ -347,14 +384,34 @@ if [ "$SKIP_NVIDIA" = false ]; then
 fi
 echo ""
 
-if [ "$SKIP_INSTALL" = false ]; then
-    echo -e "${BLUE}Next steps:${NC}"
-    echo "1. Reboot your system"
-    echo "2. Select '$KERNELRELEASE' from GRUB menu"
-    echo "3. Verify with: uname -r"
-    echo "4. Check RSEQ stats: sudo cat /sys/kernel/debug/rseq/stats"
-else
-    echo -e "${BLUE}To install later:${NC}"
-    echo "  sudo ./scripts/install-kernel-6.19.sh"
-fi
+# Show appropriate next steps based on deployment choice
+case "${INSTALL_TYPE:-skipped}" in
+    local)
+        echo -e "${BLUE}Next steps:${NC}"
+        echo "1. Reboot your system"
+        echo "2. Select '$KERNELRELEASE' from GRUB menu"
+        echo "3. Verify with: uname -r"
+        echo "4. Check RSEQ stats: sudo cat /sys/kernel/debug/rseq/stats"
+        ;;
+    portable)
+        PACKAGE_NAME="BobZKernel-${KERNELRELEASE}-installer.tar.gz"
+        echo -e "${BLUE}Portable installer created:${NC}"
+        echo "  Package: $PACKAGE_NAME"
+        echo ""
+        echo -e "${BLUE}To deploy on target system:${NC}"
+        echo "1. Copy $PACKAGE_NAME to target system"
+        echo "2. Extract: tar -xzf $PACKAGE_NAME"
+        echo "3. Install: cd installer-* && sudo ./install.sh"
+        ;;
+    skipped)
+        echo -e "${BLUE}Deployment options:${NC}"
+        echo "  Local install:      sudo ./scripts/install-kernel-6.19.sh"
+        echo "  Portable installer: ./scripts/create-portable-installer.sh 6.19"
+        ;;
+esac
+
+echo ""
+echo -e "${BLUE}Kernel build artifacts:${NC}"
+echo "  Image: builds/linux-$KERNEL_VERSION/arch/x86/boot/bzImage"
+echo "  Log: build-6.19-*.log (timestamped)"
 echo ""

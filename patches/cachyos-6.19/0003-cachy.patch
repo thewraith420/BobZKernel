@@ -1,9 +1,9 @@
-From 4a14cd3e8fd2e279d0b5eee539993447655d03ac Mon Sep 17 00:00:00 2001
-From: Eric Naim <dnaim@cachyos.org>
-Date: Wed, 11 Feb 2026 01:39:48 +0800
-Subject: [PATCH 3/9] cachy
+From 2c17440fd39b3d57beb31b3527781edea3f57bff Mon Sep 17 00:00:00 2001
+From: Peter Jung <admin@ptr1337.dev>
+Date: Mon, 16 Feb 2026 13:50:59 +0100
+Subject: [PATCH 3/7] cachy
 
-Signed-off-by: Eric Naim <dnaim@cachyos.org>
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
 ---
  .gitignore                                    |    2 +
  .../admin-guide/kernel-parameters.txt         |   12 +
@@ -229,7 +229,7 @@ index 06d0ebddeefa..c240a9b6bdbc 100644
  unprivileged_userfaultfd
  ========================
 diff --git a/Makefile b/Makefile
-index d3a8482bdbd0..45953e3f829c 100644
+index 21df63507119..1d5c75295b56 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -888,11 +888,19 @@ KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
@@ -9073,7 +9073,7 @@ index 3eaeceda71b0..66289244f71e 100644
  
  static inline bool sched_asym(struct sched_domain *sd, int dst_cpu, int src_cpu)
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index bd350e40859d..816db1bc5629 100644
+index 1b4283e9edc3..7294157bfadc 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
 @@ -2965,7 +2965,7 @@ extern void deactivate_task(struct rq *rq, struct task_struct *p, int flags);
