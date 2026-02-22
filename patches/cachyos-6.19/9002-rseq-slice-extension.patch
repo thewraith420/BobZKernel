@@ -1013,5 +1013,25 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	struct rseq_slice		slice;
 +#endif
  };
- 
+
  #else /* CONFIG_RSEQ */
++--- a/kernel/entry/syscall-common.c
+++++ b/kernel/entry/syscall-common.c
++@@ -3,6 +3,7 @@
++
++ #include <linux/audit.h>
++ #include <linux/entry-common.h>
+++#include <linux/rseq.h>
++ #include "common.h"
++
++ #define CREATE_TRACE_POINTS
++@@ -61,6 +62,10 @@
++
++ 	syscall_enter_audit(regs, syscall);
++
+++	/* Handle RSEQ slice extension work */
+++	if (work & SYSCALL_WORK_SYSCALL_RSEQ_SLICE)
+++		rseq_syscall_enter_work(syscall);
+++
++ 	return ret ? : syscall;
++ }
