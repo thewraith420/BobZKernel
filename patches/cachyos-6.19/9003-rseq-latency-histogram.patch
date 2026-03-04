@@ -1,0 +1,146 @@
+From: BobZKernel <bobgenaw420@gmail.com>
+Date: Wed, 04 Mar 2026 00:00:00 -0500
+Subject: [PATCH] rseq: Add abort latency histogram
+
+Track the elapsed time between grant and abort, bucketed into a 5-bin
+histogram. This provides data to distinguish wasted grants (aborted
+almost immediately, < 100us) from grants that earned their keep (> 1ms
+of CPU time before the aborting syscall).
+
+Also tracks total abort ns for computing the average.
+
+New stats in /sys/kernel/debug/rseq/stats:
+
+  Abort latency histogram (n=XXXX):
+    sabort_lt100us:         X  (X%)  <- wasted
+    sabort_lt1ms:           X  (X%)
+    sabort_lt5ms:           X  (X%)
+    sabort_lt10ms:          X  (X%)
+    sabort_gt10ms:          X  (X%)  <- full use
+    sabort_avg_ns:          X
+
+---
+ include/linux/rseq_entry.h  | 14 +++++++++++-
+ include/linux/rseq_types.h  |  3 ++-
+ kernel/rseq.c               | 44 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 60 insertions(+), 1 deletion(-)
+
+--- a/include/linux/rseq_types.h	2026-03-04 18:12:01.337047472 -0500
++++ b/include/linux/rseq_types.h	2026-03-04 18:11:40.297045171 -0500
+@@ -95,6 +95,7 @@
+ struct rseq_slice {
+ 	union rseq_slice_state	state;
+ 	u64			expires;
++	u64			grant_time;
+ 	u8			yielded;
+ };
+ 
+--- a/include/linux/rseq_entry.h	2026-03-04 18:12:01.338202450 -0500
++++ b/include/linux/rseq_entry.h	2026-03-04 18:11:40.298019802 -0500
+@@ -44,6 +44,13 @@
+ 	unsigned long	s_abort_lseek;
+ 	unsigned long	s_abort_sched_yield;
+ 	unsigned long	s_abort_other;
++	/* Abort latency histogram (time from grant to abort) */
++	unsigned long	s_abort_lt100us;	/* < 100us  - grant wasted */
++	unsigned long	s_abort_lt1ms;		/* 100us-1ms */
++	unsigned long	s_abort_lt5ms;		/* 1ms-5ms */
++	unsigned long	s_abort_lt10ms;		/* 5ms-10ms */
++	unsigned long	s_abort_gt10ms;		/* > 10ms   - full use */
++	unsigned long long s_abort_total_ns;	/* sum of all abort latencies (ns) */
+ };
+ 
+ DECLARE_PER_CPU(struct rseq_stats, rseq_stats);
+@@ -188,7 +195,8 @@
+ 
+ 	curr->rseq.slice.state.granted = true;
+ 	/* Store expiry time for arming the timer on the way out */
+-	curr->rseq.slice.expires = data_race(rseq_slice_ext_nsecs) + ktime_get_mono_fast_ns();
++	curr->rseq.slice.grant_time = ktime_get_mono_fast_ns();
++	curr->rseq.slice.expires = data_race(rseq_slice_ext_nsecs) + curr->rseq.slice.grant_time;
+ 	/*
+ 	 * This is racy against a remote CPU setting TIF_NEED_RESCHED in
+ 	 * several ways:
+--- a/kernel/rseq.c	2026-03-04 18:12:01.339445126 -0500
++++ b/kernel/rseq.c	2026-03-04 18:11:40.299075047 -0500
+@@ -72,6 +72,7 @@
+ 
+ #include <linux/debugfs.h>
+ #include <linux/hrtimer.h>
++#include <linux/math64.h>
+ #include <linux/percpu.h>
+ #include <linux/prctl.h>
+ #include <linux/ratelimit.h>
+@@ -188,6 +189,12 @@
+ 			stats.s_abort_lseek += data_race(per_cpu(rseq_stats.s_abort_lseek, cpu));
+ 			stats.s_abort_sched_yield += data_race(per_cpu(rseq_stats.s_abort_sched_yield, cpu));
+ 			stats.s_abort_other += data_race(per_cpu(rseq_stats.s_abort_other, cpu));
++			stats.s_abort_lt100us  += data_race(per_cpu(rseq_stats.s_abort_lt100us, cpu));
++			stats.s_abort_lt1ms    += data_race(per_cpu(rseq_stats.s_abort_lt1ms, cpu));
++			stats.s_abort_lt5ms    += data_race(per_cpu(rseq_stats.s_abort_lt5ms, cpu));
++			stats.s_abort_lt10ms   += data_race(per_cpu(rseq_stats.s_abort_lt10ms, cpu));
++			stats.s_abort_gt10ms   += data_race(per_cpu(rseq_stats.s_abort_gt10ms, cpu));
++			stats.s_abort_total_ns += data_race(per_cpu(rseq_stats.s_abort_total_ns, cpu));
+ 		}
+ 	}
+ 
+@@ -274,6 +281,34 @@
+ 				   stats.s_abort_other,
+ 				   stats.s_abort_other * 100 / stats.s_aborted);
+ 
++			/* Abort latency histogram */
++			{
++				unsigned long total_hist = stats.s_abort_lt100us +
++							   stats.s_abort_lt1ms +
++							   stats.s_abort_lt5ms +
++							   stats.s_abort_lt10ms +
++							   stats.s_abort_gt10ms;
++				u64 avg_ns = total_hist ? div64_u64(stats.s_abort_total_ns, total_hist) : 0;
++
++				seq_printf(m, "\nAbort latency histogram (n=%lu):\n", total_hist);
++				seq_printf(m, "  sabort_lt100us: %12lu  (%lu%%)  <- wasted\n",
++					   stats.s_abort_lt100us,
++					   total_hist ? stats.s_abort_lt100us * 100 / total_hist : 0);
++				seq_printf(m, "  sabort_lt1ms:   %12lu  (%lu%%)\n",
++					   stats.s_abort_lt1ms,
++					   total_hist ? stats.s_abort_lt1ms * 100 / total_hist : 0);
++				seq_printf(m, "  sabort_lt5ms:   %12lu  (%lu%%)\n",
++					   stats.s_abort_lt5ms,
++					   total_hist ? stats.s_abort_lt5ms * 100 / total_hist : 0);
++				seq_printf(m, "  sabort_lt10ms:  %12lu  (%lu%%)\n",
++					   stats.s_abort_lt10ms,
++					   total_hist ? stats.s_abort_lt10ms * 100 / total_hist : 0);
++				seq_printf(m, "  sabort_gt10ms:  %12lu  (%lu%%)  <- full use\n",
++					   stats.s_abort_gt10ms,
++					   total_hist ? stats.s_abort_gt10ms * 100 / total_hist : 0);
++				seq_printf(m, "  sabort_avg_ns:  %12llu\n", avg_ns);
++			}
++
+ 			/* Aggregate all per-syscall abort counts */
+ 			struct syscall_abort_entry *entries;
+ 			unsigned long *syscall_counts;
+@@ -872,6 +907,24 @@
+ 			} else {
+ 				rseq_stat_inc(rseq_stats.s_aborted);
+ 
++				/* Track abort latency histogram */
++				if (curr->rseq.slice.grant_time) {
++					u64 now = ktime_get_mono_fast_ns();
++					u64 ns = now - curr->rseq.slice.grant_time;
++
++					this_cpu_add(rseq_stats.s_abort_total_ns, ns);
++					if (ns < 100000ULL)
++						rseq_stat_inc(rseq_stats.s_abort_lt100us);
++					else if (ns < 1000000ULL)
++						rseq_stat_inc(rseq_stats.s_abort_lt1ms);
++					else if (ns < 5000000ULL)
++						rseq_stat_inc(rseq_stats.s_abort_lt5ms);
++					else if (ns < 10000000ULL)
++						rseq_stat_inc(rseq_stats.s_abort_lt10ms);
++					else
++						rseq_stat_inc(rseq_stats.s_abort_gt10ms);
++				}
++
+ 				/* Track syscall in the per-syscall array */
+ 				if (syscall >= 0 && syscall < RSEQ_MAX_SYSCALL_NR)
+ 					this_cpu_inc(rseq_abort_by_syscall[syscall]);
