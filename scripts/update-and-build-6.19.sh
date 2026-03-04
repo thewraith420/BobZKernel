@@ -169,8 +169,8 @@ if [ "$SKIP_PATCHES" = false ]; then
     for patch in "$BASE_DIR/patches/cachyos-6.19/"*.patch; do
         if [ -f "$patch" ]; then
             PATCH_NAME=$(basename "$patch")
-            if patch -p1 --dry-run < "$patch" > /dev/null 2>&1; then
-                patch -p1 < "$patch"
+            if patch -p1 --dry-run --ignore-whitespace < "$patch" > /dev/null 2>&1; then
+                patch -p1 --ignore-whitespace < "$patch"
                 echo -e "${GREEN}✓ Applied: $PATCH_NAME${NC}"
             else
                 echo -e "${YELLOW}⚠ Skipping (already applied or conflicts): $PATCH_NAME${NC}"

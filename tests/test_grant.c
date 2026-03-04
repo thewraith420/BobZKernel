@@ -16,7 +16,7 @@
 #define PR_RSEQ_SLICE_EXTENSION_SET 2
 #define PR_RSEQ_SLICE_EXT_ENABLE 0x01
 
-#define __NR_rseq_slice_yield 470
+#define __NR_rseq_slice_yield 471
 
 struct rseq_slice_ctrl {
     union {

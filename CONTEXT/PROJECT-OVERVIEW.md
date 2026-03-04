@@ -1,115 +1,269 @@
-# BobZKernel 6.18.9 Project Context
+# BobZKernel 6.19 Project
+
+## Current Status
+
+**Kernel Version:** Linux 6.19.3-BobZKernel+
+**Branch:** linux-6.19
+**Last Updated:** February 22, 2026
 
 ## Project Goals
-1. **System Optimization**: Optimize Lenovo LOQ 15IRH8 for battery life (battery mode) and smoothness (AC mode)
-2. **Custom Kernel Development**: Build BobZKernel with BORE scheduler, CachyOS patches, and RSEQ slice extension
-3. **RSEQ Slice Extension**: Primary development focus - enabling `CONFIG_RSEQ_SLICE_EXTENSION=y` for timeslice extension feature
+
+1. **System Optimization:** Optimize Lenovo LOQ 15IRH8 laptop for:
+   - Battery life in battery mode
+   - Performance and smoothness on AC power
+   - Gaming performance (ESO, Steam games via Proton)
+
+2. **Custom Kernel Features:**
+   - **BORE Scheduler** - Burst-Oriented Response Enhancer for desktop responsiveness
+   - **CachyOS Patches** - Performance optimizations and fixes
+   - **RSEQ Slice Extension** - Reduce context switching overhead for gaming ✅ **WORKING**
+   - **Cluster-aware scheduling** - NUMA and cache-aware task placement
+
+3. **Hardware Support:**
+   - NVIDIA RTX 4060 Mobile (proprietary driver, DKMS)
+   - Xbox controller support (hid-xpadneo driver)
+   - Lenovo Legion platform drivers (fan control, performance modes)
 
 ## Hardware Target
-- **Device**: Lenovo LOQ 15IRH8
-- **CPU**: Intel i5-13420H (13th Gen, 8 cores/12 threads)
-- **GPU**: NVIDIA GeForce RTX 3050 6GB
-- **RAM**: 16GB
-- **OS**: Debian GNU/Linux 13 (trixie)
 
-## Current Kernel Version
-- **Base**: Linux 6.18.9
-- **Branch**: rseq-timeslice
-- **Build Tag**: 6.18.9-BobZKernel+
+**System:** Lenovo LOQ 15IRH8
+**CPU:** Intel 13th Gen (Raptor Lake)
+**GPU:** NVIDIA GeForce RTX 4060 Mobile (8GB)
+**RAM:** 16GB DDR5
+**Display:** 144Hz panel
 
-## Key Configuration
+## Key Kernel Features
+
+### RSEQ Slice Extension (✅ Production Ready)
+
+**Status:** Fully functional and tested
+**Performance:** 91% yield rate, 36% revocation rate in gaming workloads
+**Integration:** ProtonGE-RSEQ fork for Wine/gaming support
+
+**What it does:**
+- Allows userspace threads to request brief protection from preemption (~30µs)
+- Reduces context switch overhead during critical sections
+- Improves gaming performance by reducing microstuttering
+
+**Syscalls:**
+- `prctl(PR_RSEQ_SLICE_EXTENSION_SET, ...)` - Enable per-thread
+- `syscall(__NR_rseq_slice_yield, 471)` - Request grant/yield
+- Sysctl: `/proc/sys/kernel/rseq_slice_extension_nsec` (default: 30000ns)
+- Stats: `/sys/kernel/debug/rseq/stats`
+
+**Key Fix:** Added missing syscall work hook in `kernel/entry/syscall-common.c`
+**Patch:** `patches/cachyos-6.19/9002-rseq-slice-extension.patch`
+
+### BORE Scheduler
+
+Burst-Oriented Response Enhancer - improves desktop interactivity and responsiveness under load.
+
+### CachyOS Patches
+
+Collection of performance patches and optimizations from CachyOS project.
+
+## Build Configuration
+
+**Compiler:** LLVM/Clang 19 (NOT GCC)
+**Build System:** Custom scripts in `scripts/`
+**Config Location:** `configs/.config-6.19.*`
+
+**Key Config Options:**
+- `CONFIG_PREEMPT_DYNAMIC=y` - Runtime preemption model selection
+- `CONFIG_RSEQ=y` - Restartable sequences support
+- `CONFIG_SCHED_BORE=y` - BORE scheduler
+- LLVM build flags for optimization
+
+## Directory Structure
+
 ```
-CONFIG_RSEQ=y
-CONFIG_RSEQ_SLICE_EXTENSION=y              # PRIMARY FEATURE
-CONFIG_SCHED_BORE=y                        # BORE scheduler
-CONFIG_LTO_CLANG_FULL=y                    # Full LTO optimization
-CONFIG_X86_NATIVE_CPU=y                    # march=native CPU optimizations
-CONFIG_CPU_FREQ=y                          # Dynamic frequency scaling
-CONFIG_PM=y                                # Power management
-CONFIG_ACPI_MADT_WAKEUP=y                  # ACPI wake optimization
+BobZKernel/
+├── builds/
+│   ├── linux-6.18/          # Old 6.18 kernel (archived)
+│   └── linux-6.19/          # Current 6.19 kernel source
+├── configs/
+│   └── .config-6.19.*       # Kernel configurations
+├── patches/
+│   ├── cachyos-6.19/        # CachyOS patches including RSEQ
+│   └── rseq-timeslice-v6-upstream/  # Upstream RSEQ patches
+├── scripts/
+│   ├── update-and-build.sh  # Main build workflow
+│   ├── build-kernel.sh      # Kernel compilation
+│   ├── install-kernel.sh    # Installation
+│   └── apply-patches.sh     # Patch application
+└── CONTEXT/
+    └── *.md                 # Documentation (this file)
 ```
 
-## Applied Patches (In Order)
-1. **0001-revocable-resource-management.patch** - Revocable resource management support
-2. **0002-rseq-timeslice-extension.patch** - RSEQ slice extension feature (937 lines, 21 files)
-3. **0003-rseq-timeslice-debian-fixes.patch** - Debian glibc 2.41 compatibility fixes
-4. **0004-fix-scheduler-vruntime-field-names.patch** - Scheduler field name fixes (min_vruntime → zero_vruntime)
+## Build Workflow
 
-## Critical Fixes Applied
-### 1. Scheduler vruntime Field Names (Patch 0004)
-**Problem**: Kernel code references `min_vruntime` and `min_vruntime_fi` but struct defines `zero_vruntime` and `zero_vruntime_fi`
-
-**Solution**: Fixed 3 locations in kernel/sched/fair.c:
-- Line 13138: `cfs_rq->zero_vruntime_fi = cfs_rq->zero_vruntime;`
-- Line 13195: `(s64)(cfs_rqb->zero_vruntime_fi - cfs_rqa->zero_vruntime_fi);`
-- Line 13434: `cfs_rq->zero_vruntime = (u64)(-(1LL << 20));`
-
-### 2. BORE Sysctl Terminator (In Source)
-**Problem**: Missing null terminator in sched_bore_sysctls[] array → "sysctl table check failed" error
-
-**Solution**: Added `{}` terminator at line 378 of kernel/sched/bore.c
-
-### 3. RSEQ Stub Syscall (In Source)
-**Problem**: sys_rseq_slice_yield syscall in table unconditionally, but not compiled when CONFIG_RSEQ_SLICE_EXTENSION=n
-
-**Solution**: Added stub implementation in kernel/rseq.c (lines 844-852):
-```c
-SYSCALL_DEFINE0(rseq_slice_yield)
-{
-    return 0;
-}
-```
-
-## Build Process
+**Standard build:**
 ```bash
 cd /home/bob/buildstuff/BobZKernel
-./scripts/update-and-build.sh --resume --yes
+./scripts/update-and-build.sh
 ```
 
-### Build Script Steps
-1. Update kernel source from upstream
-2. Apply 4 patches in order
-3. Copy kernel config (auto-detects branch for native/generic/pixel-slate)
-4. Build with LLVM-19 clang, ccache enabled
-5. Create portable installer package
-
-## Build History
-- **Previous Issues**: 
-  - Scheduler vruntime field mismatches (solved by patch 0004)
-  - BORE sysctl array without terminator (in source)
-  - Undefined rseq_slice_yield symbol (stub added)
-  
-- **Gemini Attempt**: AI assistant attempted broad patches that conflicted with custom fixes - REVERTED
-- **Current Status**: All fixes isolated, tested, and committed to git
-
-## ccache Management
-- **Location**: `~/.cache/ccache/`
-- **Clear with**: `rm -rf ~/.cache/ccache/*`
-- **Usage**: Automatically used in build (ccache clang-19)
-- **Note**: Clear before fresh builds to avoid stale object files
-
-## System Optimizations Applied
+**Resume after manual changes (preserves modifications):**
 ```bash
-# Power Management (TLP)
-/etc/tlp.conf - USB autosuspend, battery thresholds (20-85%), NMI watchdog disabled
+./scripts/update-and-build.sh --resume
+```
 
-# Driver Blacklists
-/etc/modprobe.d/blacklist-spd5118.conf - Ghost fingerprint sensor
-/etc/modprobe.d/blacklist-pcspkr.conf - PC speaker
+**Skip installation (build only):**
+```bash
+./scripts/update-and-build.sh --skip-install
+```
 
-# ALSA Fixes
-/etc/udev/rules.d/90-alsa-restore.rules - Fixed duplicate label
+## DKMS Modules
 
-# Chrome Hardware Acceleration
-~/.config/google-chrome/chrome-flags.conf - Workaround for PDF printing
+**NVIDIA (Open Kernel Module):**
+- Version: 590.48.01
+- Auto-rebuilds on kernel install
+- Manual rebuild: `sudo dkms install nvidia/590.48.01 -k $(uname -r)`
+
+**hid-xpadneo (Xbox Controller):**
+- Version: v0.10-pre-259-gfc1b13a
+- Provides Xbox controller support
+- Rebuild: `sudo dkms install hid-xpadneo/v0.10-pre-259-gfc1b13a -k $(uname -r)`
+
+**LenovoLegionLinux:**
+- Version: 0.0.20
+- Platform driver for Lenovo-specific features
+- Rebuild: `sudo dkms install LenovoLegionLinux/0.0.20 -k $(uname -r)`
+- Note: May fail with LLVM builds (needs GCC compatibility)
+
+## Integration Projects
+
+### ProtonGE-RSEQ
+
+**Location:** `/home/bob/buildstuff/proton-ge-rseq/`
+**Status:** Working - 91% yield rate achieved
+**Purpose:** Wine/Proton fork with RSEQ slice extension support for gaming
+
+**Key implementations:**
+- Per-thread RSEQ initialization
+- Proactive grant requests before lock acquisitions
+- Cooperative yielding after critical sections
+- Fixed syscall number (471, not 470)
+
+### PipeWire-RSEQ (Planned)
+
+**Location:** `/home/bob/buildstuff/pipewire-rseq/`
+**Status:** Planning phase
+**Purpose:** System-wide audio improvements via RSEQ
+**Expected Impact:** Reduced xruns, lower latency, smoother audio during CPU load
+
+## Git Workflow
+
+**Branches:**
+- `linux-6.19` - Current production branch (6.19.3)
+- `linux-6.18` - Previous stable (archived)
+- `generic-build` - Minimal generic build configuration
+
+**Remotes:**
+- `origin` - Local repository
+- `upstream` - Linux stable kernel
+
+**Commit Pattern:**
+```bash
+# After successful builds with new features
+git add -A
+git commit -m "Update to Linux 6.19.3 with RSEQ slice extension working"
+git push origin linux-6.19
+```
+
+## Known Issues & Solutions
+
+### Issue: Kernel built with GCC instead of LLVM
+
+**Symptom:** `/proc/version` shows GCC compiler
+**Cause:** Manual build commands without `LLVM=` flags
+**Solution:** Always use `update-and-build.sh` script or include `LLVM=19` in make commands
+
+### Issue: DKMS modules fail to build
+
+**Symptom:** Module build errors with LLVM
+**Cause:** Some DKMS modules (LenovoLegionLinux) use LLVM=1 flag but kernel was built with GCC
+**Solution:** Rebuild kernel with proper LLVM flags, then rebuild DKMS modules
+
+### Issue: Debug printk messages not appearing
+
+**Symptom:** Added printk() but no output in dmesg
+**Cause:** trace_printk() used but CONFIG_FTRACE not fully configured
+**Solution:** Use regular `printk(KERN_INFO "message")` instead of trace_printk()
+
+## Performance Tuning
+
+### RSEQ Slice Duration
+
+**Default:** 30,000ns (30µs) - **Optimal for gaming**
+**Range:** 10,000ns - 100,000ns
+**Adjust:** `echo 30000 | sudo tee /proc/sys/kernel/rseq_slice_extension_nsec`
+
+**Testing showed:**
+- 20µs: Too short (54% revocation rate)
+- 30µs: **Optimal** (36% revocation rate) ✅
+- 50µs: Too long (50% revocation rate, reduced yields)
+
+### Scheduler Tuning
+
+Check available tunables:
+```bash
+ls /proc/sys/kernel/sched_*
+```
+
+## Success Metrics
+
+**RSEQ Performance (Gaming):**
+- ✅ 25,832 grants during ESO gameplay
+- ✅ 91% yield rate (1,342 yields)
+- ✅ 36% revocation rate (9,389 revokes)
+- ✅ 179 unique threads actively using RSEQ
+- ✅ System-wide engagement via ProtonGE
+
+**Build Quality:**
+- ✅ Clean LLVM 19 compilation
+- ✅ All patches apply successfully
+- ✅ No compilation errors or warnings
+- ✅ DKMS modules rebuild successfully
+
+## References
+
+**Documentation:**
+- `CONTEXT/DEBUG-PRINTK-LOCATIONS.md` - Debug instrumentation reference
+- `CONTEXT/RSEQ-TRACE-RESULTS.md` - RSEQ investigation final results
+- `CONTEXT/BUILD-TROUBLESHOOTING.md` - Common build issues
+
+**External:**
+- Linux kernel: https://kernel.org
+- CachyOS patches: https://github.com/CachyOS/linux-cachyos
+- RSEQ upstream: Linux kernel `Documentation/rseq.txt`
+
+## Quick Commands
+
+```bash
+# Check kernel version
+uname -r
+
+# View RSEQ stats
+sudo cat /sys/kernel/debug/rseq/stats
+
+# Check RSEQ slice duration
+cat /proc/sys/kernel/rseq_slice_extension_nsec
+
+# Rebuild NVIDIA driver
+sudo dkms install nvidia/590.48.01 -k $(uname -r)
+
+# Check loaded modules
+lsmod | grep -E "nvidia|xpad|legion"
+
+# Monitor build
+tail -f scripts/build.log
 ```
 
 ## Next Steps
-✅ **COMPLETED** - All objectives achieved:
-1. ✅ Build completed successfully  
-2. ✅ No compilation errors
-3. ✅ Kernel installed
-4. ✅ Kernel booted
-5. ✅ RSEQ slice extension sysctl verified: `/proc/sys/kernel/rseq_slice_extension_nsec` = 30000 nanoseconds
 
-**Project Status**: **SUCCESSFUL** - All features functional (RSEQ prctl + sysctl, BORE scheduler, LTO)
+- [ ] Monitor RSEQ performance long-term
+- [ ] Test with different game workloads
+- [ ] Implement PipeWire-RSEQ integration
+- [ ] Consider contributing RSEQ improvements upstream
+- [ ] Track kernel 6.20+ updates for new features

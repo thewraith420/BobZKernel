@@ -181,6 +181,11 @@ echo -e "${BLUE}═══ Fixing Build Conflicts ═══${NC}"
 "$BASE_DIR/scripts/fix-build-conflicts.sh" "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 echo ""
 
+# Step 4.4.5: Fix RSEQ syscall work hook (auto-fix for version mismatches)
+echo -e "${BLUE}═══ Verifying RSEQ Syscall Work Hook ═══${NC}"
+"$BASE_DIR/scripts/fix-rseq-syscall-hook.sh" "$BASE_DIR/builds/linux-$KERNEL_VERSION"
+echo ""
+
 if [ "$SKIP_PATCHES" = false ]; then
     # Step 4.5: Apply cluster-aware NVMe IRQ optimization backport
     echo -e "${BLUE}═══ Applying NVMe Cluster-Aware IRQ Optimization ═══${NC}"

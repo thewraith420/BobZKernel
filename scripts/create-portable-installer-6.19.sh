@@ -78,6 +78,19 @@ cp "$KERNEL_DIR/arch/x86/boot/bzImage" "$INSTALLER_DIR/boot/vmlinuz-$KERNELRELEA
 cp "$KERNEL_DIR/System.map" "$INSTALLER_DIR/boot/System.map-$KERNELRELEASE"
 cp "$KERNEL_DIR/.config" "$INSTALLER_DIR/boot/config-$KERNELRELEASE"
 
+# Copy initramfs if it exists in /boot (from previous installation)
+if [ -f "/boot/initrd.img-$KERNELRELEASE" ]; then
+    echo -e "${BLUE}Including pre-built initramfs from /boot...${NC}"
+    cp "/boot/initrd.img-$KERNELRELEASE" "$INSTALLER_DIR/boot/initrd.img-$KERNELRELEASE"
+    echo -e "${GREEN}✓ Pre-built initramfs included${NC}"
+elif [ -f "/boot/initramfs-$KERNELRELEASE.img" ]; then
+    echo -e "${BLUE}Including pre-built initramfs from /boot...${NC}"
+    cp "/boot/initramfs-$KERNELRELEASE.img" "$INSTALLER_DIR/boot/initramfs-$KERNELRELEASE.img"
+    echo -e "${GREEN}✓ Pre-built initramfs included${NC}"
+else
+    echo -e "${YELLOW}⚠ No pre-built initramfs found - installer will generate on target system${NC}"
+fi
+
 # Copy modules
 echo -e "${BLUE}Copying kernel modules (this may take a minute)...${NC}"
 cd "$KERNEL_DIR"
@@ -177,27 +190,46 @@ detect_bootloader() {
 # Install kernel files
 install_kernel_files() {
     echo -e "${BLUE}Installing kernel files...${NC}"
-    
+
     # Copy kernel image
     cp -v "$SCRIPT_DIR/boot/vmlinuz-$KERNELRELEASE" /boot/
     cp -v "$SCRIPT_DIR/boot/System.map-$KERNELRELEASE" /boot/
     cp -v "$SCRIPT_DIR/boot/config-$KERNELRELEASE" /boot/
-    
+
+    # Copy pre-built initramfs if included in package
+    if [ -f "$SCRIPT_DIR/boot/initrd.img-$KERNELRELEASE" ]; then
+        echo -e "${BLUE}Installing pre-built initramfs...${NC}"
+        cp -v "$SCRIPT_DIR/boot/initrd.img-$KERNELRELEASE" /boot/
+        INITRAMFS_INCLUDED=true
+    elif [ -f "$SCRIPT_DIR/boot/initramfs-$KERNELRELEASE.img" ]; then
+        echo -e "${BLUE}Installing pre-built initramfs...${NC}"
+        cp -v "$SCRIPT_DIR/boot/initramfs-$KERNELRELEASE.img" /boot/
+        INITRAMFS_INCLUDED=true
+    else
+        INITRAMFS_INCLUDED=false
+    fi
+
     # Copy modules
     echo -e "${BLUE}Installing kernel modules...${NC}"
     cp -r "$SCRIPT_DIR/lib/modules/$KERNELRELEASE" /lib/modules/
-    
+
     # Run depmod
     echo -e "${BLUE}Running depmod...${NC}"
     depmod -a "$KERNELRELEASE"
-    
+
     echo -e "${GREEN}✓ Kernel files installed${NC}"
 }
 
 # Update initramfs
 update_initramfs() {
+    # Skip if pre-built initramfs was already installed
+    if [ "$INITRAMFS_INCLUDED" = true ]; then
+        echo -e "${GREEN}✓ Using pre-built initramfs from package (skipping generation)${NC}"
+        return 0
+    fi
+
     echo -e "${BLUE}Generating initramfs...${NC}"
-    
+
     case "$DISTRO_ID" in
         ubuntu|debian|linuxmint|pop)
             if command -v update-initramfs &> /dev/null; then

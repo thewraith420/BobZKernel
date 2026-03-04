@@ -29,7 +29,7 @@
 #endif
 
 #ifndef __NR_rseq_slice_yield
-#define __NR_rseq_slice_yield 470
+#define __NR_rseq_slice_yield 471
 #endif
 
 struct rseq_slice_ctrl {
