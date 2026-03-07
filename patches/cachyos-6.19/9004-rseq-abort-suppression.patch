@@ -1,0 +1,113 @@
+From: BobZKernel <bobgenaw420@gmail.com>
+Date: Fri, 07 Mar 2026 00:00:00 -0500
+Subject: [PATCH] rseq: Per-thread abort suppression with exponential backoff
+
+Threads that repeatedly abort grants within <100us are wasting scheduler
+overhead. Track consecutive fast aborts per-thread and suppress further
+grants after 3 consecutive fast aborts, with exponential backoff starting
+at 10ms and doubling up to 320ms.
+
+A single successful grant expiry or lightweight syscall preserve resets
+the counter, allowing the thread to receive grants again immediately.
+
+New stat in /sys/kernel/debug/rseq/stats:
+  ssupp: grants skipped due to per-thread suppression
+
+---
+ include/linux/rseq_entry.h |  9 ++++++++-
+ include/linux/rseq_types.h |  2 ++
+ kernel/rseq.c              | 15 ++++++++++++++-
+ 3 files changed, 24 insertions(+), 2 deletions(-)
+
+--- a/b/include/linux/rseq_types.h	2026-03-06 23:42:45.951459365 -0500
++++ b/include/linux/rseq_types.h	2026-03-06 23:42:59.262673487 -0500
+@@ -96,7 +96,9 @@
+ 	union rseq_slice_state	state;
+ 	u64			expires;
+ 	u64			grant_time;
++	u64			suppress_until;
+ 	u8			yielded;
++	u8			fast_aborts;
+ };
+ 
+ /**
+--- a/b/include/linux/rseq_entry.h	2026-03-06 23:42:45.953581630 -0500
++++ b/include/linux/rseq_entry.h	2026-03-06 23:43:24.425219779 -0500
+@@ -51,6 +51,7 @@
+ 	unsigned long	s_abort_lt10ms;		/* 5ms-10ms */
+ 	unsigned long	s_abort_gt10ms;		/* > 10ms   - full use */
+ 	unsigned long long s_abort_total_ns;	/* sum of all abort latencies (ns) */
++	unsigned long	s_suppressed;		/* grants skipped by per-thread suppression */
+ };
+ 
+ DECLARE_PER_CPU(struct rseq_stats, rseq_stats);
+@@ -161,6 +162,13 @@
+ 	if (likely(!state.state))
+ 		return false;
+ 
++	/* Per-thread abort suppression: skip grant if thread is suppressed */
++	if (curr->rseq.slice.suppress_until &&
++	    ktime_get_mono_fast_ns() < curr->rseq.slice.suppress_until) {
++		rseq_stat_inc(rseq_stats.s_suppressed);
++		return false;
++	}
++
+ 	rseq = curr->rseq.usrptr;
+ 	scoped_user_rw_access(rseq, efault) {
+ 
+--- a/b/kernel/rseq.c	2026-03-06 23:42:45.954664714 -0500
++++ b/kernel/rseq.c	2026-03-07 09:51:16.373228735 -0500
+@@ -195,6 +195,7 @@
+ 			stats.s_abort_lt10ms   += data_race(per_cpu(rseq_stats.s_abort_lt10ms, cpu));
+ 			stats.s_abort_gt10ms   += data_race(per_cpu(rseq_stats.s_abort_gt10ms, cpu));
+ 			stats.s_abort_total_ns += data_race(per_cpu(rseq_stats.s_abort_total_ns, cpu));
++			stats.s_suppressed += data_race(per_cpu(rseq_stats.s_suppressed, cpu));
+ 		}
+ 	}
+ 
+@@ -213,6 +214,7 @@
+ 		seq_printf(m, "syield: %16lu\n", stats.s_yielded);
+ 		seq_printf(m, "sabort: %16lu\n", stats.s_aborted);
+ 		seq_printf(m, "spresv: %16lu\n", stats.s_preserved);
++		seq_printf(m, "ssupp:  %16lu\n", stats.s_suppressed);
+ 
+ 		/* Show abort breakdown if there are any aborts */
+ 		if (stats.s_aborted > 0) {
+@@ -729,6 +731,9 @@
+ 	 */
+ 	if (st->cookie == current && current->rseq.slice.state.granted) {
+ 		rseq_stat_inc(rseq_stats.s_expired);
++		/* Thread used its full grant — reset abort suppression */
++		current->rseq.slice.fast_aborts = 0;
++		current->rseq.slice.suppress_until = 0;
+ 		set_need_resched_current();
+ 	}
+ 	return HRTIMER_NORESTART;
+@@ -903,6 +908,8 @@
+ 				 * after this fast syscall returns.
+ 				 */
+ 				rseq_stat_inc(rseq_stats.s_preserved);
++				/* Lightweight syscall preserved grant — thread is good */
++				curr->rseq.slice.fast_aborts = 0;
+ 				return;
+ 			} else {
+ 				rseq_stat_inc(rseq_stats.s_aborted);
+@@ -923,6 +930,18 @@
+ 						rseq_stat_inc(rseq_stats.s_abort_lt10ms);
+ 					else
+ 						rseq_stat_inc(rseq_stats.s_abort_gt10ms);
++
++					/* Per-thread abort suppression */
++					if (ns < 100000ULL) {
++						u8 aborts = ++curr->rseq.slice.fast_aborts;
++						if (aborts >= 3) {
++							/* Exponential backoff: 10ms, 20ms, 40ms... cap 500ms */
++							u64 backoff = 10000000ULL << min_t(u8, aborts - 3, 5);
++							curr->rseq.slice.suppress_until = now + backoff;
++						}
++					} else {
++						curr->rseq.slice.fast_aborts = 0;
++					}
+ 				}
+ 
+ 				/* Track syscall in the per-syscall array */
