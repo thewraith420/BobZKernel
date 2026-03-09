@@ -76,7 +76,7 @@ fi
 echo -e "${BLUE}Step 3: Installing modules...${NC}"
 make LLVM=${LLVM_VERSION} modules_install
 
-KERNEL_VERSION=$(make LLVM=${LLVM_VERSION} kernelrelease)
+KERNEL_VERSION=$(cat include/config/kernel.release)
 
 echo -e "${BLUE}Step 4: Compressing modules with zstd...${NC}"
 find /lib/modules/$KERNEL_VERSION -name '*.ko' -exec zstd --rm -q -T0 {} \;

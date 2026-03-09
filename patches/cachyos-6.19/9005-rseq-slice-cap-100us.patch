@@ -1,0 +1,18 @@
+From: BobZ <bob@localhost>
+Date: Sat, 07 Mar 2026 00:00:00 +0000
+Subject: [PATCH] rseq: raise slice extension sysctl cap to 100us
+
+Raise the maximum rseq_slice_extension_nsec sysctl from 50us to 100us
+to allow testing of longer timeslices for CPU-bound workloads.
+
+--- a/kernel/rseq.c
++++ b/kernel/rseq.c
+@@ -1106,7 +1106,7 @@
+
+ #ifdef CONFIG_SYSCTL
+ static const unsigned int rseq_slice_ext_nsecs_min = 10 * NSEC_PER_USEC;
+-static const unsigned int rseq_slice_ext_nsecs_max = 50 * NSEC_PER_USEC;
++static const unsigned int rseq_slice_ext_nsecs_max = 100 * NSEC_PER_USEC;
+
+ static const struct ctl_table rseq_slice_ext_sysctl[] = {
+ 	{
