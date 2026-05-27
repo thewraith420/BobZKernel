@@ -1,186 +1,165 @@
-# BobZKernel - Optimized Linux 6.18.9
+# BobZKernel — Optimized Linux 7.0
 
-Custom optimized Linux kernel 6.18.9 with RSEQ slice extension, BORE scheduler, and performance optimizations for Lenovo LOQ 15IRH8.
+Custom optimized Linux kernel 7.0.x with the BORE scheduler, RSEQ abort latency observability, and performance/security tuning targeted at the Lenovo LOQ 15IRH8.
 
 ## Features
 
-### RSEQ Slice Extension (Primary Feature)
-- **Syscall 470** (`rseq_slice_yield`) - New syscall for timeslice management
-- **prctl Interface** - Per-process control of slice extension
-- **Runtime Tunable** - `/proc/sys/kernel/rseq_slice_extension_nsec` (default: 30000 ns)
-- **CONFIG_RSEQ_SLICE_EXTENSION=y** - Enabled by default
+### Scheduler
+- **BORE Scheduler** — Burst-Oriented Response Enhancer for desktop responsiveness (vanilla-compatible variant; CachyOS-required version intentionally not used).
+- **`CONFIG_RSEQ_SLICE_EXTENSION=y`** — RSEQ time slice extension. Graduated to mainline in Linux 7.0; was custom patch 9002 in 6.19.
+  - Runtime tunable: `/proc/sys/kernel/rseq_slice_extension_nsec` (range 10000–100000)
+  - Observability via `/sys/kernel/debug/rseq/stats`
+- **9003-rseq-latency-histogram patch** — 5-bucket abort latency histogram + `avg_ns`, ported from 6.19.
+- **1000 Hz timer**, **dynamic preemption** (`CONFIG_PREEMPT_DYNAMIC=y`).
 
-### Performance Optimizations
-- **BORE Scheduler** - Burst-Oriented Response Enhancer for desktop responsiveness
-- **CachyOS Patches** - Additional performance optimizations (CONFIG_CACHY=y)
-- **Full LTO** - Link-Time Optimization using LLVM/Clang-19
-- **1000Hz Timer** - Better latency for interactive workloads (CONFIG_HZ=1000)
-- **Dynamic Preemption** - CONFIG_PREEMPT_DYNAMIC=y
+### Compiler & CPU Optimizations
+- **LTO Clang Full** (`CONFIG_LTO_CLANG_FULL=y`) — whole-program link-time optimization via Clang.
+- **march=native** (`CONFIG_X86_NATIVE_CPU=y`) — tuned for Intel i5-13420H (13th Gen Raptor Lake).
+- Built with **Clang/LLVM-19** + **ccache**.
 
-### CPU Optimizations
-- **march=native** - CPU-specific optimizations for Intel i5-13420H (13th Gen Raptor Lake)
-- **CONFIG_X86_NATIVE_CPU=y** - Native CPU instruction set
+### Storage, Memory, Network
+- **NVMe cluster-aware IRQ affinity** — graduated to mainline in 7.0; was patch 9010 in 6.19. Each NVMe queue pins 1:1 to a CPU.
+- **ZRAM** (`CONFIG_ZRAM=y`, zstd compression).
+- **ZSWAP** (`CONFIG_ZSWAP=y`, zstd compression, enabled by default).
+- **BBRv3 TCP congestion control** (`CONFIG_DEFAULT_TCP_CONG="bbr"`).
 
-### Memory & Storage
-- **ZRAM** - Compressed RAM swap (CONFIG_ZRAM=y, zstd compression)
-- **ZSWAP** - Compressed swap cache (CONFIG_ZSWAP=y, zstd compression, enabled by default)
-- **BBRv3 TCP Congestion Control** - CONFIG_TCP_CONG_BBR=y, set as default
+### Security
+- **RANDSTRUCT Full** (`CONFIG_RANDSTRUCT_FULL=y`) — randomized layouts for sensitive kernel structures. Requires NVIDIA driver to be re-patched after each driver package update (handled by `scripts/nvidia-randstruct-fix.sh`).
 
-### Power Management
-- **CONFIG_CPU_FREQ=y** - Dynamic frequency scaling
-- **CONFIG_PM=y** - Power management support
-- **CONFIG_ACPI_MADT_WAKEUP=y** - ACPI wake optimization
-
-### DKMS Modules (Auto-Rebuilt)
-- **xpadneo** - Advanced Xbox controller driver with rumble, battery reporting, and low-latency support
-- **NVIDIA drivers** - Automatically rebuilt with each kernel update
+### DKMS Modules (Auto-Rebuilt by Build Pipeline)
+- **NVIDIA 595.71.05** — open kernel modules, with automatic RANDSTRUCT compatibility fixes.
+- **LenovoLegionLinux** — pulled from [thewraith420/LenovoLegionLinux](https://github.com/thewraith420/LenovoLegionLinux) (fork of [johnfanv2/LenovoLegionLinux](https://github.com/johnfanv2/LenovoLegionLinux)) carrying a `balanced-performance ↔ custom` profile alias on top of upstream master.
+- **xpadneo** — advanced Xbox controller driver (rumble, battery reporting, low-latency).
 
 ## Target Hardware
 
 - **Device**: Lenovo LOQ 15IRH8
-- **CPU**: Intel i5-13420H (13th Gen, 8 cores/12 threads)
-- **GPU**: NVIDIA GeForce RTX 3050 6GB
-- **RAM**: 8GB
+- **CPU**: Intel i5-13420H (13th Gen, 8 cores / 12 threads)
+- **GPU**: NVIDIA GeForce RTX 3050 6GB (Optimus — i915 display, NVIDIA render)
+- **RAM**: 8 GB
 - **OS**: Debian GNU/Linux 13 (trixie)
+
+The build pipeline is parameterized enough that it should work on similar hardware; the kernel config is named `config-7.0-march-native` to make it clear that the binary is hardware-specific.
 
 ## Installation
 
-### Build from Source
+### Build from source
 
 ```bash
-./scripts/update-and-build.sh --yes
+./scripts/update-and-build-7.0.sh
 ```
 
-For incremental builds (skip upstream update):
+The script handles 9 steps: detect latest `v7.0.x` tag → clean → apply patches → configure → build → install → NVIDIA DKMS check → LenovoLegionLinux DKMS update from fork → summary.
+
+For unattended runs:
 ```bash
-./scripts/update-and-build.sh --resume --yes
+./scripts/update-and-build-7.0.sh --yes
 ```
 
-### Install After Build
+To skip the kernel update check (use whatever's already checked out):
+```bash
+./scripts/update-and-build-7.0.sh --skip-update
+```
+
+### Install on a different machine (portable installer)
 
 ```bash
-# Use the portable installer
-cd installer-6.18.9-BobZKernel*/
+./scripts/create-portable-installer.sh 7.0
+# Copy the resulting tarball, then on target:
+tar -xzf BobZKernel-*-installer.tar.gz
+cd installer-*/
 sudo ./install.sh
 ```
 
 ## Verification
 
-After installation and reboot:
+After reboot, expected state:
 
 ```bash
-# Check kernel version
 uname -r
-# Expected: 6.18.9-BobZKernel+
+# 7.0.10-BobZKernel-dirty (or current point release)
 
-# Verify RSEQ slice extension sysctl
-cat /proc/sys/kernel/rseq_slice_extension_nsec
-# Expected: 30000
+# LTO + native CPU
+grep -E "^CONFIG_LTO_CLANG_FULL|^CONFIG_X86_NATIVE_CPU" /boot/config-$(uname -r)
 
-# Verify BORE scheduler
-grep -i bore /proc/sched_debug 2>/dev/null || dmesg | grep -i bore
+# BORE active
+sudo sysctl kernel.sched_bore
+# kernel.sched_bore = 1
 
-# Check LTO was used
-grep CONFIG_LTO_CLANG_FULL /boot/config-$(uname -r)
+# RSEQ slice extension + histogram
+sudo cat /sys/kernel/debug/rseq/stats
+
+# NVMe cluster-aware (each queue pinned to its own CPU)
+grep nvme0q /proc/interrupts
+
+# Lenovo platform profile (both old + new names exposed)
+cat /sys/class/platform-profile/platform-profile-0/choices
+# low-power balanced balanced-performance performance max-power custom
 ```
 
-### Run RSEQ Tests
+## Patch Stack (7.0)
 
-```bash
-cd tests/rseq-slice-extension
-./run_all_tests.sh
-```
+In `patches/cachyos-7.0/`:
 
-## Applied Patches
+- `0001-bore.patch` — BORE scheduler (vanilla variant, no `CONFIG_CACHY` required).
+- `9003-rseq-latency-histogram.patch` — abort latency histogram (5 bins + avg_ns).
+- `0001-acpi-call.patch`, `0001-cgroup-vram.patch`, `0001-rt-i915.patch`, `dkms-clang.patch` — CachyOS support patches.
 
-Three custom patches are applied in order:
-
-1. **9001-revocable-resource-management.patch** - Revocable resource management infrastructure
-2. **9002-rseq-timeslice-extension.patch** - RSEQ slice extension feature (21 files, 937 lines)
-3. **9003-rseq-timeslice-debian-fixes.patch** - Debian glibc 2.41 compatibility
-
-## Build System
-
-### Automated Build Fixes
-
-The build system includes `fix-build-conflicts.sh` with 12 automated fixes:
-
-1. Remove init/Kconfig merge conflict markers
-2. Remove thread_info.h merge conflict markers
-3. Remove kernel/rseq.c merge conflict markers
-4. Remove duplicate migration_cost definition from fair.c
-5. Fix vruntime field names (min_vruntime → zero_vruntime)
-6. Remove bore.c merge conflict markers
-7. Remove duplicate static from revocable.c
-8. Update hrtimer API (hrtimer_init → hrtimer_setup)
-9. Update sysctl API (register_sysctl → register_sysctl_init)
-10. Repair broken comment block in fair.c
-11. Add missing #endif for CONFIG_RSEQ_SLICE_EXTENSION
-12. Remove empty `{}` terminator from sysctl array
-
-### Build Requirements
-
-- **Compiler**: Clang/LLVM-19
-- **Build Tool**: ccache (optional, for faster rebuilds)
-- **OS**: Debian 13 (trixie) or compatible
+Patches pending consideration for 7.0:
+- **Per-thread RSEQ abort suppression** (was 9004 on 6.19, exponential backoff 10ms → 320ms).
+- **Revocable Resource Management** (was 6.18-only, never ported forward).
 
 ## Directory Structure
 
 ```
 BobZKernel/
 ├── builds/
-│   └── linux-6.18/                    # Kernel source with patches
+│   └── linux-7.0/                # Kernel source (gitignored — checked out by build script)
 ├── scripts/
-│   ├── update-and-build.sh            # Complete automated workflow
-│   ├── build-kernel.sh                # Build kernel only
-│   ├── fix-build-conflicts.sh         # Automated build fixes
-│   └── ...
+│   ├── update-and-build-7.0.sh   # Main pipeline (9 steps)
+│   ├── build-kernel-7.0.sh       # Kernel build with LTO + ccache
+│   ├── install-kernel-7.0.sh     # Install with DKMS, initramfs, GRUB
+│   ├── nvidia-randstruct-fix.sh  # Re-applies __no_randomize_layout post NVIDIA update
+│   ├── configure-nvidia-suspend.sh
+│   ├── monitor-rseq-stats.sh
+│   └── ...                        # Plus assorted RSEQ/NVIDIA tooling
 ├── patches/
-│   └── cachyos-6.18/                  # CachyOS + RSEQ patches (9001-9003)
-├── configs/                           # Saved kernel configs
-├── tests/
-│   └── rseq-slice-extension/          # RSEQ feature tests
-└── CONTEXT/                           # Project documentation
-    ├── PROJECT-OVERVIEW.md
-    ├── BUILD-STATUS.md
-    ├── BUILD-TROUBLESHOOTING.md
-    ├── QUICK-START.md
-    ├── GIT-COMMITS.md
-    └── SYSCTL-FIX-SESSION.md
+│   └── cachyos-7.0/              # 7.0 patch set
+├── configs/
+│   └── config-7.0-march-native   # Kernel config (LTO Full, march=native, ...)
+├── CONTEXT/                       # Project documentation
+│   ├── PROJECT-OVERVIEW.md
+│   ├── BUILD-STATUS.md
+│   ├── BUILD-TROUBLESHOOTING.md
+│   ├── QUICK-START.md
+│   └── DEBUG-PRINTK-LOCATIONS.md  # RSEQ debug printk reference
+└── tests/
+    └── rseq-slice-extension/      # RSEQ tests (carried over from 6.19)
 ```
+
+Legacy branches `linux-6.19`, `linux-6.18`, etc. remain available for historical reference.
 
 ## Troubleshooting
 
 See `CONTEXT/BUILD-TROUBLESHOOTING.md` for detailed error solutions.
 
-### Common Issues
+**NVIDIA suspend crash after driver update** — Run `sudo scripts/nvidia-randstruct-fix.sh`. RANDSTRUCT shuffles struct layouts each kernel build; the NVIDIA DKMS source needs `__no_randomize_layout` re-applied each time the driver package is updated.
 
-**Build fails with scheduler errors:**
-```bash
-# Fix is automated, but if needed manually:
-sed -i 's/cfs_rq->min_vruntime/cfs_rq->zero_vruntime/g' builds/linux-6.18/kernel/sched/fair.c
-```
+**LenovoLegionLinux platform_profile not showing up** — On kernel 7.0 the driver registers a virtual platform device. If `/sys/class/platform-profile/` is empty, check `dmesg | grep legion` for probe errors; re-run the build script to pull the latest fork commit.
 
-**Stale ccache objects:**
-```bash
-rm -rf ~/.cache/ccache/*
-./scripts/update-and-build.sh --resume --yes
-```
-
-**RSEQ sysctl not appearing:**
-- Ensure CONFIG_RSEQ_SLICE_EXTENSION=y in .config
-- Check dmesg for sysctl registration errors
-- See CONTEXT/SYSCTL-FIX-SESSION.md for details
+**TLP config writes silently rejected** — TLP doesn't validate, but the firmware does. Standard accepted profile names on this hardware: `low-power`, `balanced`, `balanced-performance`, `performance`, `max-power`, `custom`. Both `balanced-performance` and `custom` map to the same hardware state (purple LED).
 
 ## Credits
 
-- **Linux Kernel** - Linus Torvalds and contributors
-- **Thomas Gleixner** - RSEQ time slice extension mechanism
-- **Tzung-Bi Shih (Google)** - Revocable resource management (Copyright 2025 Google LLC)
-- **CachyOS Team** - BORE scheduler and performance patches
-- **LLVM Project** - Clang/LLVM compiler infrastructure
-- **atar-axis** - [xpadneo](https://github.com/atar-axis/xpadneo) - Advanced Xbox controller driver
+- **Linux Kernel** — Linus Torvalds and contributors.
+- **Thomas Gleixner** — RSEQ time slice extension mechanism (graduated to mainline in 7.0).
+- **Masahito Suzuki** — BORE CPU scheduler.
+- **Tzung-Bi Shih (Google)** — Revocable resource management (6.18 backport).
+- **CachyOS Team** — Performance patches.
+- **LLVM Project** — Clang/LLVM compiler infrastructure.
+- **johnfanv2 and contributors** — [LenovoLegionLinux](https://github.com/johnfanv2/LenovoLegionLinux) (upstream).
+- **atar-axis** — [xpadneo](https://github.com/atar-axis/xpadneo) Xbox controller driver.
 
 ## License
 
-Linux kernel is licensed under GPLv2. CachyOS patches maintain their respective licenses.
+Linux kernel is licensed under GPLv2. Patches retain their respective upstream licenses.
