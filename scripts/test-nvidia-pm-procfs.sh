@@ -25,19 +25,29 @@ echo "suspend" > /proc/driver/nvidia/suspend
 status=$?
 echo "[$(date)] Write returned status: $status"
 
-echo ""
-echo "[$(date)] Checking debug messages..."
-dmesg | grep BOBZDBG
+# Always resume on exit so we never leave the GPU stuck in a suspended state.
+resume_gpu() {
+    echo ""
+    echo "[$(date)] Writing 'resume' to /proc/driver/nvidia/suspend..."
+    echo "resume" > /proc/driver/nvidia/suspend || true
+}
+trap resume_gpu EXIT
 
 echo ""
-echo "[$(date)] Writing 'resume' to /proc/driver/nvidia/suspend..."
-echo "resume" > /proc/driver/nvidia/suspend
+echo "[$(date)] Checking debug messages..."
+# Non-fatal — `set -euo pipefail` + a grep with no matches would otherwise
+# abort here, before the resume write runs.
+dmesg | grep BOBZDBG || echo "  (no BOBZDBG messages yet)"
+
+# Explicitly resume (trap also covers the early-exit case)
+resume_gpu
+trap - EXIT
 status=$?
 echo "[$(date)] Resume returned status: $status"
 
 echo ""
 echo "[$(date)] Full debug trace:"
-dmesg | grep BOBZDBG
+dmesg | grep BOBZDBG || echo "  (no BOBZDBG messages)"
 
 echo ""
 echo "=== Done ==="

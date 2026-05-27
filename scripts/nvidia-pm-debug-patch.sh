@@ -9,7 +9,22 @@
 
 set -euo pipefail
 
-NVIDIA_SRC="/usr/src/nvidia-595.45.04"
+# Auto-detect the installed NVIDIA DKMS source directory. Accept an explicit
+# version as $2 (e.g. ./nvidia-pm-debug-patch.sh apply 595.71.05). Fall back
+# to the highest-versioned /usr/src/nvidia-* otherwise.
+NVIDIA_VERSION="${2:-}"
+if [ -z "$NVIDIA_VERSION" ]; then
+    NVIDIA_VERSION=$(ls -d /usr/src/nvidia-* 2>/dev/null \
+                     | sed 's|.*/nvidia-||' \
+                     | sort -V | tail -1)
+fi
+if [ -z "$NVIDIA_VERSION" ] || [ ! -d "/usr/src/nvidia-$NVIDIA_VERSION" ]; then
+    echo "Error: could not find /usr/src/nvidia-* — install the NVIDIA driver via DKMS first" >&2
+    exit 1
+fi
+NVIDIA_SRC="/usr/src/nvidia-$NVIDIA_VERSION"
+echo "Using NVIDIA source: $NVIDIA_SRC"
+
 NV_C="$NVIDIA_SRC/kernel-open/nvidia/nv.c"
 NV_DRM_DRV="$NVIDIA_SRC/kernel-open/nvidia-drm/nvidia-drm-drv.c"
 NV_MODESET="$NVIDIA_SRC/kernel-open/nvidia/nv-modeset-interface.c"

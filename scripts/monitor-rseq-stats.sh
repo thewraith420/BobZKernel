@@ -159,10 +159,13 @@ echo -e "${GREEN}Detailed log saved to: $LOG_FILE${NC}"
 echo -e "${BLUE}Analyze with: cat $LOG_FILE${NC}"
 echo
 
-# Generate quick analysis
+# Generate quick analysis. Use grants/sec * 60 so runs shorter than a
+# minute don't hit integer division-by-zero.
 echo -e "${BLUE}Quick Analysis:${NC}"
-echo -e "  Grant rate: $((TOTAL_GRANT / (DURATION / 60))) grants/min"
-if [ $TOTAL_GRANT -gt 0 ]; then
+if [ "$DURATION" -gt 0 ]; then
+    echo -e "  Grant rate: $((TOTAL_GRANT * 60 / DURATION)) grants/min"
+fi
+if [ "$TOTAL_GRANT" -gt 0 ] && [ "$SAMPLES" -gt 0 ]; then
     echo -e "  Avg grants/sample: $((TOTAL_GRANT / SAMPLES))"
 fi
 echo

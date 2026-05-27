@@ -164,15 +164,21 @@ if [ "$SKIP_PATCHES" = false ]; then
     cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
     # Apply CachyOS patches from patches/cachyos-7.0/
+    # Distinguish "already applied" (dry-run -R succeeds) from "conflict"
+    # (neither forward nor reverse applies cleanly). Treat real conflicts
+    # as fatal so we don't silently ship a build with missing features.
     for patch in "$BASE_DIR/patches/cachyos-7.0/"*.patch; do
-        if [ -f "$patch" ]; then
-            PATCH_NAME=$(basename "$patch")
-            if patch -p1 --dry-run --ignore-whitespace < "$patch" > /dev/null 2>&1; then
-                patch -p1 --ignore-whitespace < "$patch"
-                echo -e "${GREEN}✓ Applied: $PATCH_NAME${NC}"
-            else
-                echo -e "${YELLOW}⚠ Skipping (already applied or conflicts): $PATCH_NAME${NC}"
-            fi
+        [ -f "$patch" ] || continue
+        PATCH_NAME=$(basename "$patch")
+        if patch -p1 --dry-run --ignore-whitespace < "$patch" > /dev/null 2>&1; then
+            patch -p1 --ignore-whitespace < "$patch"
+            echo -e "${GREEN}✓ Applied: $PATCH_NAME${NC}"
+        elif patch -p1 -R --dry-run --ignore-whitespace < "$patch" > /dev/null 2>&1; then
+            echo -e "${YELLOW}⊘ Already applied: $PATCH_NAME${NC}"
+        else
+            echo -e "${RED}✗ Conflict applying $PATCH_NAME — patch needs refreshing${NC}"
+            echo -e "${YELLOW}  Re-run from a clean tree, or update the patch.${NC}"
+            exit 1
         fi
     done
     echo -e "${GREEN}✓ Patches applied${NC}"

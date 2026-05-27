@@ -4,7 +4,10 @@
 
 set -e
 
-KERNEL_DIR="${1:-/home/bob/buildstuff/BobZKernel/builds/linux-6.19}"
+# Default to the 7.0 build tree (this is the current active branch). Allow
+# override by passing the kernel source dir as $1, e.g. for legacy 6.19 use.
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+KERNEL_DIR="${1:-$BASE_DIR/builds/linux-7.0}"
 SYSCALL_FILE="$KERNEL_DIR/kernel/entry/syscall-common.c"
 
 echo "Checking RSEQ syscall work hook in $SYSCALL_FILE..."

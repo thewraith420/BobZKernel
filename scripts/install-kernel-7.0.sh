@@ -12,9 +12,11 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Kernel version (6.19)
-KERNEL_DIR="/home/bob/buildstuff/BobZKernel/builds/linux-7.0"
+# Derive repo root from script location so this works on any clone path.
+# Allow override via BOBZ_BASE_DIR env var (handy for testing).
+BASE_DIR="${BOBZ_BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 KERNEL_MAJOR="7.0"
+KERNEL_DIR="$BASE_DIR/builds/linux-$KERNEL_MAJOR"
 
 LOCALVERSION="-BobZKernel"
 
@@ -57,10 +59,21 @@ echo -e "${BLUE}Using LLVM version: ${LLVM_VERSION:-system default}${NC}"
 
 echo -e "${BLUE}Step 1: Patching DKMS sources for compatibility...${NC}"
 # Patch DKMS sources BEFORE installation to fix known API incompatibilities
-bash /home/bob/buildstuff/BobZKernel/scripts/patch-dkms-sources.sh
+bash "$BASE_DIR/scripts/patch-dkms-sources.sh"
 
 echo -e "${BLUE}Step 2: Installing kernel (disabling DKMS autoinstall hook)...${NC}"
-# Temporarily disable DKMS autoinstall to avoid building before patching
+# Temporarily disable DKMS autoinstall to avoid building before patching.
+# Restore via trap so a failure between disable/restore can't leave the
+# system with DKMS autoinstall permanently off.
+DKMS_HOOK_DISABLED=false
+restore_dkms_hook() {
+    if [ "$DKMS_HOOK_DISABLED" = true ] && [ -f /etc/kernel/postinst.d/dkms.disabled ]; then
+        mv /etc/kernel/postinst.d/dkms.disabled /etc/kernel/postinst.d/dkms
+        DKMS_HOOK_DISABLED=false
+    fi
+}
+trap restore_dkms_hook EXIT
+
 if [ -f /etc/kernel/postinst.d/dkms ]; then
     mv /etc/kernel/postinst.d/dkms /etc/kernel/postinst.d/dkms.disabled
     DKMS_HOOK_DISABLED=true
@@ -68,10 +81,8 @@ fi
 
 make LLVM=${LLVM_VERSION} install
 
-# Re-enable DKMS hook
-if [ "$DKMS_HOOK_DISABLED" = true ]; then
-    mv /etc/kernel/postinst.d/dkms.disabled /etc/kernel/postinst.d/dkms
-fi
+restore_dkms_hook
+trap - EXIT
 
 echo -e "${BLUE}Step 3: Installing modules...${NC}"
 make LLVM=${LLVM_VERSION} modules_install
@@ -159,7 +170,7 @@ echo -e "${BLUE}Step 6: Regenerating initramfs...${NC}"
 update-initramfs -c -k $KERNEL_VERSION
 
 echo -e "${BLUE}Step 7: Building VMware modules (if installed)...${NC}"
-bash /home/bob/buildstuff/BobZKernel/scripts/build-vmware-modules.sh "$KERNEL_VERSION" || {
+bash "$BASE_DIR/scripts/build-vmware-modules.sh" "$KERNEL_VERSION" || {
     echo -e "${YELLOW}Note: VMware modules not built (VMware may not be installed)${NC}"
 }
 
