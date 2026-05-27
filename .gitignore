@@ -14,8 +14,18 @@ Module.symvers
 *.order
 .tmp_versions/
 
-# Build logs
-build-*.log
+# Build / install / debug / rebuild logs (anywhere)
+*.log
+
+# Claude Code workspace state (per-user)
+.claude/
+
+# Local clones of external sources managed by build scripts
+external/
+
+# Timestamped kernel config snapshots saved during builds
+configs/.config-*
+
 
 # Generated installers (distribute via GitHub Releases)
 *-installer.sh
@@ -49,6 +59,9 @@ install.sh
 uninstall.sh
 installer-*/
 
-# Install logs
-install-*.log
 tests/
+
+# Patch tool backup files
+*.patch.old
+*.patch.orig
+*.rej
