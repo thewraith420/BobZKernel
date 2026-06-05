@@ -267,7 +267,7 @@ if [ "$SKIP_INSTALL" = false ]; then
                 ;;
             2)
                 echo -e "${BLUE}Creating portable installer package...${NC}"
-                ./scripts/create-portable-installer.sh 7.0 || {
+                ./scripts/create-portable-installer-7.0.sh || {
                     echo -e "${RED}Portable installer creation failed!${NC}"
                     exit 1
                 }
@@ -426,7 +426,7 @@ case "${INSTALL_TYPE:-skipped}" in
     skipped)
         echo -e "${BLUE}Deployment options:${NC}"
         echo "  Local install:      sudo ./scripts/install-kernel-7.0.sh"
-        echo "  Portable installer: ./scripts/create-portable-installer.sh 7.0"
+        echo "  Portable installer: ./scripts/create-portable-installer-7.0.sh"
         ;;
 esac
 
