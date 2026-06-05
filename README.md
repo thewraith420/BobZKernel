@@ -7,7 +7,7 @@ Custom optimized Linux kernel 7.0.x with the BORE scheduler, RSEQ abort latency 
 ### Scheduler
 - **BORE Scheduler** — Burst-Oriented Response Enhancer for desktop responsiveness (vanilla-compatible variant; CachyOS-required version intentionally not used).
 - **`CONFIG_RSEQ_SLICE_EXTENSION=y`** — RSEQ time slice extension. Graduated to mainline in Linux 7.0; was custom patch 9002 in 6.19.
-  - Runtime tunable: `/proc/sys/kernel/rseq_slice_extension_nsec` (range 10000–100000)
+  - Runtime tunable: `/sys/kernel/debug/rseq/slice_ext_nsec` (range 5000–50000 ns)
   - Observability via `/sys/kernel/debug/rseq/stats`
 - **9003-rseq-latency-histogram patch** — 5-bucket abort latency histogram + `avg_ns`, ported from 6.19.
 - **1000 Hz timer**, **dynamic preemption** (`CONFIG_PREEMPT_DYNAMIC=y`).
@@ -27,8 +27,8 @@ Custom optimized Linux kernel 7.0.x with the BORE scheduler, RSEQ abort latency 
 - **RANDSTRUCT Full** (`CONFIG_RANDSTRUCT_FULL=y`) — randomized layouts for sensitive kernel structures. Requires NVIDIA driver to be re-patched after each driver package update (handled by `scripts/nvidia-randstruct-fix.sh`).
 
 ### DKMS Modules (Auto-Rebuilt by Build Pipeline)
-- **NVIDIA 595.71.05** — open kernel modules, with automatic RANDSTRUCT compatibility fixes.
-- **LenovoLegionLinux** — pulled from [thewraith420/LenovoLegionLinux](https://github.com/thewraith420/LenovoLegionLinux) (fork of [johnfanv2/LenovoLegionLinux](https://github.com/johnfanv2/LenovoLegionLinux)) carrying a `balanced-performance ↔ custom` profile alias on top of upstream master.
+- **NVIDIA 610.43.02** — open kernel modules, with automatic RANDSTRUCT compatibility fixes.
+- **LenovoLegionLinux** — pulled directly from upstream [johnfanv2/LenovoLegionLinux](https://github.com/johnfanv2/LenovoLegionLinux) master. The kernel patch `9100-platform-profile-accept-custom` lets userspace (TLP, etc.) write `custom` to the aggregate `/sys/firmware/acpi/platform_profile`, replacing the need for an out-of-tree profile alias.
 - **xpadneo** — advanced Xbox controller driver (rumble, battery reporting, low-latency).
 
 ## Target Hardware
@@ -49,7 +49,7 @@ The build pipeline is parameterized enough that it should work on similar hardwa
 ./scripts/update-and-build-7.0.sh
 ```
 
-The script handles 9 steps: detect latest `v7.0.x` tag → clean → apply patches → configure → build → install → NVIDIA DKMS check → LenovoLegionLinux DKMS update from fork → summary.
+The script handles 9 steps: detect latest `v7.0.x` tag → clean → apply patches → configure → build → install → NVIDIA DKMS check → LenovoLegionLinux DKMS update (upstream master) → summary.
 
 For unattended runs:
 ```bash
@@ -77,7 +77,7 @@ After reboot, expected state:
 
 ```bash
 uname -r
-# 7.0.10-BobZKernel-dirty (or current point release)
+# 7.0.11-BobZKernel (or current point release)
 
 # LTO + native CPU
 grep -E "^CONFIG_LTO_CLANG_FULL|^CONFIG_X86_NATIVE_CPU" /boot/config-$(uname -r)
@@ -92,9 +92,9 @@ sudo cat /sys/kernel/debug/rseq/stats
 # NVMe cluster-aware (each queue pinned to its own CPU)
 grep nvme0q /proc/interrupts
 
-# Lenovo platform profile (both old + new names exposed)
-cat /sys/class/platform-profile/platform-profile-0/choices
-# low-power balanced balanced-performance performance max-power custom
+# Lenovo platform profile choices
+cat /sys/firmware/acpi/platform_profile_choices
+# low-power balanced performance max-power custom
 ```
 
 ## Patch Stack (7.0)
@@ -146,9 +146,9 @@ See `CONTEXT/BUILD-TROUBLESHOOTING.md` for detailed error solutions.
 
 **NVIDIA suspend crash after driver update** — Run `sudo scripts/nvidia-randstruct-fix.sh`. RANDSTRUCT shuffles struct layouts each kernel build; the NVIDIA DKMS source needs `__no_randomize_layout` re-applied each time the driver package is updated.
 
-**LenovoLegionLinux platform_profile not showing up** — On kernel 7.0 the driver registers a virtual platform device. If `/sys/class/platform-profile/` is empty, check `dmesg | grep legion` for probe errors; re-run the build script to pull the latest fork commit.
+**LenovoLegionLinux platform_profile not showing up** — On kernel 7.0 the driver registers a virtual platform device. If `/sys/class/platform-profile/` is empty, check `dmesg | grep legion` for probe errors; re-run the build script to pull the latest upstream LLL commit.
 
-**TLP config writes silently rejected** — TLP doesn't validate, but the firmware does. Standard accepted profile names on this hardware: `low-power`, `balanced`, `balanced-performance`, `performance`, `max-power`, `custom`. Both `balanced-performance` and `custom` map to the same hardware state (purple LED).
+**TLP config writes silently rejected** — TLP doesn't validate, but the kernel does. Accepted profile names on this hardware: `low-power`, `balanced`, `performance`, `max-power`, `custom`. The `custom` profile (purple LED, AC power mode) requires patch `9100-platform-profile-accept-custom` in the running kernel — without it the aggregate sysfs returns `-EINVAL` on any write of `custom`.
 
 ## Credits
 
