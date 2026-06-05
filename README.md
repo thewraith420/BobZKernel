@@ -103,7 +103,8 @@ In `patches/cachyos-7.0/`:
 
 - `0001-bore.patch` — BORE scheduler (vanilla variant, no `CONFIG_CACHY` required).
 - `9003-rseq-latency-histogram.patch` — abort latency histogram (5 bins + avg_ns).
-- `0001-acpi-call.patch`, `0001-cgroup-vram.patch`, `0001-rt-i915.patch`, `dkms-clang.patch` — CachyOS support patches.
+- `0001-acpi-call.patch`, `0001-rt-i915.patch`, `dkms-clang.patch` — CachyOS support patches.
+- `9100-platform-profile-accept-custom.patch` — lets the aggregate `/sys/firmware/acpi/platform_profile` accept writes of `custom` (needed so TLP can drive the legion-laptop "custom" profile directly).
 
 Patches pending consideration for 7.0:
 - **Per-thread RSEQ abort suppression** (was 9004 on 6.19, exponential backoff 10ms → 320ms).
