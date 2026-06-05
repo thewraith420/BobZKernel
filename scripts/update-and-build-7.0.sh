@@ -332,7 +332,13 @@ fi
 # Step 8: LenovoLegionLinux DKMS module (from thewraith420 fork)
 echo -e "${BLUE}═══ Step 8/9: Updating LenovoLegionLinux DKMS Module ═══${NC}"
 
-LEGION_FORK="https://github.com/thewraith420/LenovoLegionLinux.git"
+# Upstream LenovoLegionLinux. We previously carried a local fork at
+# thewraith420/LenovoLegionLinux to add a "balanced-performance" alias
+# for the renamed "custom" profile, but with the kernel-side patch
+# (patches/cachyos-7.0/9100-platform-profile-accept-custom.patch)
+# TLP can now write "custom" directly to the aggregate sysfs — so the
+# alias is no longer needed and we can use upstream as-is.
+LEGION_FORK="https://github.com/johnfanv2/LenovoLegionLinux.git"
 LEGION_VERSION="1.0.0"
 LEGION_SRC="/usr/src/LenovoLegionLinux-$LEGION_VERSION"
 LEGION_TMP="/tmp/legion-fork-$$"
