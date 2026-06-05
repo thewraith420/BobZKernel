@@ -79,13 +79,13 @@ if [ -f /etc/kernel/postinst.d/dkms ]; then
     DKMS_HOOK_DISABLED=true
 fi
 
-make LLVM=${LLVM_VERSION} install
+make LOCALVERSION= LLVM=${LLVM_VERSION} install
 
 restore_dkms_hook
 trap - EXIT
 
 echo -e "${BLUE}Step 3: Installing modules...${NC}"
-make LLVM=${LLVM_VERSION} modules_install
+make LOCALVERSION= LLVM=${LLVM_VERSION} modules_install
 
 KERNEL_VERSION=$(cat include/config/kernel.release)
 

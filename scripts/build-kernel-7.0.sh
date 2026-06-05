@@ -135,7 +135,10 @@ LOG_FILE="$BASE_DIR/build-7.0-$(date +%Y%m%d-%H%M%S).log"
     echo "KCFLAGS: ${KCFLAGS}"
     echo "ccache: ${USE_CCACHE:-disabled}"
     echo ""
-    make LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ CC="${USE_CCACHE} clang${LLVM_VERSION}" -j$(nproc)
+    # LOCALVERSION= suppresses the "-dirty" suffix that scripts/setlocalversion
+    # would otherwise append (our patches modify the kernel tree without
+    # committing them into Linus's git history, which is expected).
+    make LOCALVERSION= LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ CC="${USE_CCACHE} clang${LLVM_VERSION}" -j$(nproc)
     echo ""
     echo "Build completed at $(date)"
 } 2>&1 | tee "$LOG_FILE"
