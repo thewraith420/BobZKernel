@@ -300,7 +300,7 @@ fi
 if [ "$SKIP_NVIDIA" = false ]; then
     echo -e "${BLUE}═══ Step 7/9: Verifying NVIDIA DKMS Modules ═══${NC}"
 
-    KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s kernelrelease 2>/dev/null)
+    KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION= kernelrelease 2>/dev/null)
     # dkms is in /usr/sbin (root path) and the pipeline can SIGPIPE under
     # `set -o pipefail`. Use sudo and `|| true` to keep the script alive.
     NVIDIA_VERSION=$(sudo dkms status nvidia 2>/dev/null | awk -F'[,/]' 'NR==1{gsub(/ /,"",$2); print $2}' || true)
@@ -342,7 +342,7 @@ LEGION_FORK="https://github.com/johnfanv2/LenovoLegionLinux.git"
 LEGION_VERSION="1.0.0"
 LEGION_SRC="/usr/src/LenovoLegionLinux-$LEGION_VERSION"
 LEGION_TMP="/tmp/legion-fork-$$"
-KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s kernelrelease 2>/dev/null)
+KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION= kernelrelease 2>/dev/null)
 
 echo -e "${BLUE}Fetching latest from fork...${NC}"
 rm -rf "$LEGION_TMP"
@@ -389,7 +389,7 @@ echo -e "${GREEN}║              Build Complete!                            ║
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s kernelrelease 2>/dev/null)
+KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION= kernelrelease 2>/dev/null)
 
 echo -e "${BLUE}Kernel built: $KERNELRELEASE${NC}"
 echo ""
