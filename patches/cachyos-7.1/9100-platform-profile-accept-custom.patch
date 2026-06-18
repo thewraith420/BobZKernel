@@ -1,0 +1,42 @@
+platform_profile: allow writing "custom" to the aggregate sysfs
+
+The aggregate sysfs at /sys/firmware/acpi/platform_profile historically
+treated "custom" as informational-only — a sentinel emitted when multiple
+platform_profile drivers report conflicting active states. As a result
+platform_profile_store() short-circuits with -EINVAL on any write of
+"custom", even when the system has a single driver that legitimately
+exposes PLATFORM_PROFILE_CUSTOM as a writable choice.
+
+This breaks userspace tools that drive platform_profile via the aggregate
+sysfs (TLP, power-profiles-daemon, etc.) on hardware whose vendor driver
+uses PLATFORM_PROFILE_CUSTOM as a real selectable profile — most notably
+the Lenovo Legion (legion-laptop) driver, where "custom" is the standard
+gamezone-aligned name for what older kernels called "balanced-performance".
+
+The check immediately after this one — !test_bit(i, data.aggregate)
+returning -EOPNOTSUPP — already prevents writes to drivers that do not
+advertise the requested profile. So dropping the special-case rejection
+of PLATFORM_PROFILE_CUSTOM does not allow nonsensical writes: it only
+allows writes to drivers that have explicitly published "custom" in their
+choices bitmap.
+
+Reads at the aggregate level continue to emit "custom" as a conflict
+sentinel when multiple drivers disagree — that behavior is separate and
+unaffected by this change.
+
+---
+ drivers/acpi/platform_profile.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/acpi/platform_profile.c b/drivers/acpi/platform_profile.c
+--- a/drivers/acpi/platform_profile.c
++++ b/drivers/acpi/platform_profile.c
+@@ -419,7 +419,7 @@ static ssize_t platform_profile_store(struct kobject *kobj,
+
+ 	/* Scan for a matching profile */
+ 	i = sysfs_match_string(profile_names, buf);
+-	if (i < 0 || i == PLATFORM_PROFILE_CUSTOM)
++	if (i < 0)
+ 		return -EINVAL;
+
+ 	scoped_cond_guard(mutex_intr, return -ERESTARTSYS, &profile_lock) {
