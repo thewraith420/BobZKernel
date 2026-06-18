@@ -71,6 +71,20 @@ fi
 # Step 1: Check for kernel updates
 if [ "$SKIP_UPDATE" = false ]; then
     echo -e "${BLUE}═══ Step 1/9: Checking for Kernel Updates ═══${NC}"
+
+    # First-time setup: clone the stable kernel tree if it doesn't exist.
+    if [ ! -d "$BASE_DIR/builds/linux-$KERNEL_VERSION/.git" ]; then
+        echo -e "${YELLOW}No build tree at builds/linux-$KERNEL_VERSION — cloning stable tree (first-time setup)${NC}"
+        mkdir -p "$BASE_DIR/builds"
+        git clone --depth 1 --branch "v$KERNEL_VERSION" \
+            https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \
+            "$BASE_DIR/builds/linux-$KERNEL_VERSION" || {
+            echo -e "${RED}Failed to clone stable kernel tree.${NC}"
+            exit 1
+        }
+        echo -e "${GREEN}✓ Cloned at v$KERNEL_VERSION${NC}"
+    fi
+
     cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
     # Clean up any uncommitted changes from previous builds
@@ -82,12 +96,17 @@ if [ "$SKIP_UPDATE" = false ]; then
         echo -e "${GREEN}Resume mode: Preserving build state${NC}"
     fi
 
-    # Find the latest stable point release tag
+    # Find the latest stable point release tag.
+    # Pattern v$KV* widens to match both the bare v7.1 release and v7.1.N
+    # point releases; the post-filter restricts to "exactly v$KV" or
+    # "v$KV.something" so v7.10/v7.11 from a future major bump can't sneak in.
+    # sort -V handles "v7.1 < v7.1.1 < v7.1.2" naturally.
     echo -e "${BLUE}Checking for latest v$KERNEL_VERSION.x release...${NC}"
-    LATEST_TAG=$(timeout 30 git ls-remote --tags origin "refs/tags/v$KERNEL_VERSION.*" 2>/dev/null \
+    LATEST_TAG=$(timeout 30 git ls-remote --tags origin "refs/tags/v$KERNEL_VERSION*" 2>/dev/null \
         | grep -v '\^{}\|rc' \
         | awk '{print $2}' | sed 's|refs/tags/||' \
-        | sort -t. -k3 -n | tail -1)
+        | grep -E "^v${KERNEL_VERSION}(\.|$)" \
+        | sort -V | tail -1)
 
     if [ -z "$LATEST_TAG" ]; then
         echo -e "${YELLOW}Could not reach origin, skipping update check${NC}"
