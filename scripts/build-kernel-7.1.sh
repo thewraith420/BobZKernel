@@ -26,7 +26,7 @@ elif [ "$BRANCH" = "pixel-slate" ]; then
     echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate (camera + audio optimized) config${NC}"
 elif [ "$BRANCH" = "workpc" ]; then
     CONFIG_FILE="$BASE_DIR/configs/config-7.1-workpc"
-    echo -e "${BLUE}Branch: workpc - using AMD Piledriver + Radeon config (generic x86-64 codegen)${NC}"
+    echo -e "${BLUE}Branch: workpc - using AMD Piledriver (bdver2) + Radeon config${NC}"
 else
     CONFIG_FILE="$BASE_DIR/configs/config-7.1-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
@@ -71,7 +71,7 @@ if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ] || [ "$BRANCH" = "
 elif [ "$BRANCH" = "pixel-slate" ]; then
     echo -e "${GREEN}✓ march=skylake optimizations will be applied (Pixel Slate - Kaby Lake)${NC}"
 elif [ "$BRANCH" = "workpc" ]; then
-    echo -e "${GREEN}✓ Generic x86-64 codegen (AMD Piledriver target, runs on any x86-64)${NC}"
+    echo -e "${GREEN}✓ AMD Piledriver (bdver2) optimizations will be applied${NC}"
 else
     echo -e "${YELLOW}⚠ Using generic x86-64 optimizations on $BRANCH branch${NC}"
 fi
@@ -94,12 +94,13 @@ if [ "$BRANCH" = "pixel-slate" ]; then
     echo -e "${BLUE}Applying Skylake (Kaby Lake) optimizations for Pixel Slate...${NC}"
     KCFLAGS="-march=skylake -mtune=skylake"
 elif [ "$BRANCH" = "workpc" ]; then
-    # workpc targets AMD Piledriver (no AVX2 / BMI2). The kernel may be
-    # built on a different machine (e.g. the laptop) so march=native would
-    # produce instructions Piledriver can't run. Leave KCFLAGS empty and
-    # let CONFIG_GENERIC_CPU pick the safe x86-64 baseline.
-    echo -e "${BLUE}Workpc build: no extra march flags (using config's generic x86-64 codegen)${NC}"
-    KCFLAGS=""
+    # workpc targets AMD Piledriver. The kernel may be built on a different
+    # machine (e.g. the laptop), so -march=native would emit instructions
+    # Piledriver can't run. -march=bdver2 is the Piledriver-specific target:
+    # SSE through SSE4.2, AES-NI, AVX, FMA4, XOP — but no AVX2 or BMI2,
+    # which Piledriver lacks. Same pattern as pixel-slate (-march=skylake).
+    echo -e "${BLUE}Applying Piledriver (bdver2) optimizations for workpc...${NC}"
+    KCFLAGS="-march=bdver2 -mtune=bdver2"
 elif [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ] || [ "$BRANCH" = "linux-7.1" ]; then
     echo -e "${BLUE}Applying march=native optimizations...${NC}"
     KCFLAGS="-march=native"
