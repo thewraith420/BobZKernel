@@ -216,6 +216,9 @@ if [ "$BRANCH" = "generic-build" ]; then
 elif [ "$BRANCH" = "pixel-slate" ]; then
     CONFIG_SRC="$BASE_DIR/configs/config-7.1-pixel-slate"
     echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate config${NC}"
+elif [ "$BRANCH" = "workpc" ]; then
+    CONFIG_SRC="$BASE_DIR/configs/config-7.1-workpc"
+    echo -e "${BLUE}Branch: workpc - using AMD Piledriver + Radeon config (generic x86-64 codegen)${NC}"
 else
     CONFIG_SRC="$BASE_DIR/configs/config-7.1-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
