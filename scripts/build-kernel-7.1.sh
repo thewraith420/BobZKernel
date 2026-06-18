@@ -67,6 +67,8 @@ if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ] || [ "$BRANCH" = "
     fi
 elif [ "$BRANCH" = "pixel-slate" ]; then
     echo -e "${GREEN}✓ march=skylake optimizations will be applied (Pixel Slate - Kaby Lake)${NC}"
+elif [ "$BRANCH" = "generic-build" ]; then
+    echo -e "${GREEN}✓ x86-64-v2 optimizations will be applied (universal modern x86-64)${NC}"
 else
     echo -e "${YELLOW}⚠ Using generic x86-64 optimizations on $BRANCH branch${NC}"
 fi
@@ -88,6 +90,13 @@ echo ""
 if [ "$BRANCH" = "pixel-slate" ]; then
     echo -e "${BLUE}Applying Skylake (Kaby Lake) optimizations for Pixel Slate...${NC}"
     KCFLAGS="-march=skylake -mtune=skylake"
+elif [ "$BRANCH" = "generic-build" ]; then
+    # Universal x86-64 build: target x86-64-v2 baseline (SSE through SSE4.2 +
+    # POPCNT). Covers Intel Nehalem (2008+) and AMD Bulldozer (2011+) — i.e.
+    # any modern x86-64 CPU. Less aggressive than march=native but still
+    # meaningfully better than bare x86-64-v1 (the kernel default).
+    echo -e "${BLUE}Applying x86-64-v2 optimizations for universal x86-64 build...${NC}"
+    KCFLAGS="-march=x86-64-v2 -mtune=generic"
 elif [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ] || [ "$BRANCH" = "linux-7.1" ]; then
     echo -e "${BLUE}Applying march=native optimizations...${NC}"
     KCFLAGS="-march=native"
