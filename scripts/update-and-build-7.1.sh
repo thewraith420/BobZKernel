@@ -316,10 +316,24 @@ else
 fi
 
 # Step 7: Patch and build NVIDIA modules
+# Only run if the kernel was actually installed locally — there's no point
+# trying to build DKMS modules against a kernel that lives in a tarball on
+# disk but was never installed to /lib/modules. We detect "installed
+# locally" by checking the kernel's modules build symlink. This avoids the
+# false-failure that hit every portable-installer build (workpc, pixel-slate,
+# generic-build) where the laptop's NVIDIA DKMS tried to build for a
+# variant kernel that doesn't exist on the laptop.
+KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION= kernelrelease 2>/dev/null)
+if [ "$SKIP_NVIDIA" = false ] && [ ! -d "/lib/modules/$KERNELRELEASE/build" ]; then
+    echo -e "${YELLOW}⊘ Skipping NVIDIA DKMS step: kernel '$KERNELRELEASE' isn't installed locally${NC}"
+    echo -e "${YELLOW}  (this is expected for portable-installer / skipped deployments)${NC}"
+    echo ""
+    SKIP_NVIDIA=true
+fi
+
 if [ "$SKIP_NVIDIA" = false ]; then
     echo -e "${BLUE}═══ Step 7/9: Verifying NVIDIA DKMS Modules ═══${NC}"
 
-    KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION= kernelrelease 2>/dev/null)
     # dkms is in /usr/sbin (root path) and the pipeline can SIGPIPE under
     # `set -o pipefail`. Use sudo and `|| true` to keep the script alive.
     NVIDIA_VERSION=$(sudo dkms status nvidia 2>/dev/null | awk -F'[,/]' 'NR==1{gsub(/ /,"",$2); print $2}' || true)
@@ -348,7 +362,19 @@ else
     echo ""
 fi
 
-# Step 8: LenovoLegionLinux DKMS module (from thewraith420 fork)
+# Step 8: LenovoLegionLinux DKMS module (upstream)
+# Same logic as Step 7: only meaningful if the kernel is installed locally
+# (so DKMS can actually find /lib/modules/$KERNELRELEASE/build). Otherwise
+# this is a hand-rolled false-failure on every variant build.
+KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION= kernelrelease 2>/dev/null)
+if [ ! -d "/lib/modules/$KERNELRELEASE/build" ]; then
+    echo -e "${YELLOW}⊘ Skipping LenovoLegionLinux DKMS step: kernel '$KERNELRELEASE' isn't installed locally${NC}"
+    SKIP_LLL=true
+else
+    SKIP_LLL=false
+fi
+
+if [ "$SKIP_LLL" = false ]; then
 echo -e "${BLUE}═══ Step 8/9: Updating LenovoLegionLinux DKMS Module ═══${NC}"
 
 # Upstream LenovoLegionLinux. We previously carried a local fork at
@@ -361,7 +387,6 @@ LEGION_FORK="https://github.com/johnfanv2/LenovoLegionLinux.git"
 LEGION_VERSION="1.0.0"
 LEGION_SRC="/usr/src/LenovoLegionLinux-$LEGION_VERSION"
 LEGION_TMP="/tmp/legion-fork-$$"
-KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION= kernelrelease 2>/dev/null)
 
 echo -e "${BLUE}Fetching latest from fork...${NC}"
 rm -rf "$LEGION_TMP"
@@ -400,6 +425,7 @@ else
         echo -e "${GREEN}✓ LenovoLegionLinux built for $KERNELRELEASE${NC}"
     fi
 fi
+fi  # end SKIP_LLL guard
 echo ""
 
 # Step 9: Summary
