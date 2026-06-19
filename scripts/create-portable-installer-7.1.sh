@@ -37,16 +37,48 @@ if [ -z "$KERNELRELEASE" ]; then
     exit 1
 fi
 
-# Feature detection from .config
-if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
-    MARCH_OPTIMIZATION="march=native (CPU-specific optimization — tuned to the build host's CPU)"
-    ARCH_NOTE="Tuned for Intel Raptor Lake (13th Gen) — see compatibility section below"
-    BUILD_HOST_CPU=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
-else
-    MARCH_OPTIMIZATION="generic x86-64"
-    ARCH_NOTE="Generic x86-64 build (compatible with most modern x86-64 CPUs)"
-    BUILD_HOST_CPU="(generic)"
-fi
+# Determine the actual codegen target based on the branch we're building from.
+# This matches the KCFLAGS logic in build-kernel-7.1.sh so the installer
+# announces the same march= the kernel was actually compiled with.
+case "$BRANCH" in
+    pixel-slate)
+        MARCH_TARGET="-march=skylake -mtune=skylake"
+        MARCH_OPTIMIZATION="march=skylake (Intel Skylake / Kaby Lake — Pixel Slate)"
+        ARCH_NOTE="Built for Google Pixel Slate hardware (Skylake/Kaby Lake era Intel)."
+        EXPECTED_VENDOR="GenuineIntel"
+        EXPECTED_DESCRIPTION="Intel Skylake or newer (8th gen Y-series, Pixel Slate target)"
+        ;;
+    workpc)
+        MARCH_TARGET="-march=bdver2 -mtune=bdver2"
+        MARCH_OPTIMIZATION="march=bdver2 (AMD Piledriver / Bulldozer v2)"
+        ARCH_NOTE="Built for AMD FX-series (Vishera/Piledriver) family 15h CPUs."
+        EXPECTED_VENDOR="AuthenticAMD"
+        EXPECTED_DESCRIPTION="AMD Family 15h+ (Bulldozer, Piledriver, Steamroller, Excavator, or Zen)"
+        ;;
+    generic-build)
+        MARCH_TARGET="-march=x86-64-v2 -mtune=generic"
+        MARCH_OPTIMIZATION="march=x86-64-v2 (universal modern x86-64 baseline)"
+        ARCH_NOTE="Compatible with Intel Nehalem (2008+) and AMD Bulldozer (2011+) onwards."
+        EXPECTED_VENDOR="any"
+        EXPECTED_DESCRIPTION="Any x86-64 CPU with SSE4.2 + POPCNT (Intel 2008+, AMD 2011+)"
+        ;;
+    *)
+        if grep -q "CONFIG_X86_NATIVE_CPU=y" .config; then
+            MARCH_TARGET="-march=native"
+            MARCH_OPTIMIZATION="march=native (CPU-specific — tuned to the build host's CPU)"
+            ARCH_NOTE="Tuned for Intel Raptor Lake (13th Gen) — the laptop's CPU at build time."
+            EXPECTED_VENDOR="GenuineIntel"
+            EXPECTED_DESCRIPTION="Intel 12th-14th gen (Alder/Raptor Lake) — match the build host"
+        else
+            MARCH_TARGET="(unspecified)"
+            MARCH_OPTIMIZATION="generic x86-64"
+            ARCH_NOTE="Generic x86-64 build."
+            EXPECTED_VENDOR="any"
+            EXPECTED_DESCRIPTION="Any x86-64 CPU"
+        fi
+        ;;
+esac
+BUILD_HOST_CPU=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
 
 if grep -q "CONFIG_LTO_CLANG_FULL=y" .config; then
     LTO_STATUS="LTO Clang Full (whole-program Link Time Optimization)"
@@ -61,7 +93,11 @@ else
 fi
 
 INSTALLER_DIR="$BASE_DIR/installer-$KERNELRELEASE"
-PACKAGE_NAME="BobZKernel-${KERNELRELEASE}-march-native-installer.tar.gz"
+# KERNELRELEASE is "7.1.1-BobZKernel" or "7.1.1-BobZKernel-workpc" etc.
+# Strip the redundant "-BobZKernel" so the tarball is just
+# "BobZKernel-7.1.1-installer.tar.gz" or "BobZKernel-7.1.1-workpc-installer.tar.gz".
+PACKAGE_SLUG=${KERNELRELEASE/-BobZKernel/}
+PACKAGE_NAME="BobZKernel-${PACKAGE_SLUG}-installer.tar.gz"
 
 echo -e "${BLUE}Creating portable installer for $KERNELRELEASE${NC}"
 echo
@@ -111,9 +147,22 @@ Note: $ARCH_NOTE
 EOF
 
 echo -e "${BLUE}Writing install.sh...${NC}"
-cat > "$INSTALLER_DIR/install.sh" <<'INSTALLER_SCRIPT'
+# install.sh has two parts:
+# (1) build-time-injected variables (expanding heredoc — $vars get filled in here)
+# (2) the rest of the installer logic (single-quoted heredoc — preserved verbatim)
+cat > "$INSTALLER_DIR/install.sh" <<EOF
 #!/bin/bash
-# BobZKernel 7.1 portable installer.
+# BobZKernel 7.1 portable installer — variant: $BRANCH
+
+# Build-time-injected values (set by create-portable-installer-7.1.sh):
+BUILD_BRANCH="$BRANCH"
+BUILD_MARCH_TARGET="$MARCH_TARGET"
+BUILD_MARCH_DESCRIPTION="$MARCH_OPTIMIZATION"
+EXPECTED_VENDOR="$EXPECTED_VENDOR"
+EXPECTED_DESCRIPTION="$EXPECTED_DESCRIPTION"
+EOF
+
+cat >> "$INSTALLER_DIR/install.sh" <<'INSTALLER_SCRIPT'
 
 set -e
 
@@ -148,15 +197,23 @@ if [ -f "$SCRIPT_DIR/VERSION" ]; then
     echo
 fi
 
-# Compatibility check: march=native build is tuned to Raptor Lake (13th Gen).
-# Bail loudly on AMD or very old Intel rather than installing an unbootable kernel.
+# Compatibility check — variant-aware. The EXPECTED_VENDOR and
+# EXPECTED_DESCRIPTION variables are baked in at build time so the same
+# install.sh code path works for every branch (laptop, workpc, pixel-slate,
+# generic, etc.). Only warns if there's an actual mismatch; no spurious
+# "Intel Raptor Lake" alarm on builds that target a different CPU class.
 HOST_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo | awk -F: '{print $2}' | xargs)
 HOST_FAMILY=$(grep -m1 "cpu family" /proc/cpuinfo | awk -F: '{print $2}' | xargs)
 echo -e "${BLUE}Host CPU vendor: ${HOST_VENDOR} (family ${HOST_FAMILY})${NC}"
-if [ "$HOST_VENDOR" != "GenuineIntel" ]; then
-    echo -e "${RED}WARNING: This kernel was built with march=native targeting Intel${NC}"
-    echo -e "${RED}Raptor Lake. Your CPU is ${HOST_VENDOR}, which will almost certainly${NC}"
-    echo -e "${RED}fail to boot. Recommended: build from source instead.${NC}"
+echo -e "${BLUE}Kernel codegen:  ${BUILD_MARCH_DESCRIPTION}${NC}"
+echo -e "${BLUE}Expected CPU:    ${EXPECTED_DESCRIPTION}${NC}"
+
+if [ "$EXPECTED_VENDOR" != "any" ] && [ "$EXPECTED_VENDOR" != "$HOST_VENDOR" ]; then
+    echo
+    echo -e "${RED}WARNING: This kernel was built with ${BUILD_MARCH_TARGET}, expecting${NC}"
+    echo -e "${RED}${EXPECTED_VENDOR} CPUs. Your CPU vendor is ${HOST_VENDOR}, which is likely${NC}"
+    echo -e "${RED}to fail at boot or crash with SIGILL. Build from source for your hardware${NC}"
+    echo -e "${RED}with: git checkout <branch> && ./scripts/update-and-build-7.1.sh${NC}"
     echo
     read -p "Proceed anyway? [y/N] " -n 1 -r
     echo
@@ -416,7 +473,7 @@ echo -e "${GREEN}SHA-256:  $PACKAGE_SHA${NC}"
 echo -e "${GREEN}Location: $BASE_DIR/$PACKAGE_NAME${NC}"
 echo
 echo -e "${BLUE}To attach to a GitHub release:${NC}"
-echo "  gh release create v$KERNELRELEASE-march-native \\"
-echo "    --title 'BobZKernel $KERNELRELEASE (march=native)' \\"
+echo "  gh release create v$PACKAGE_SLUG \\"
+echo "    --title 'BobZKernel v$PACKAGE_SLUG ($MARCH_OPTIMIZATION)' \\"
 echo "    --notes-file <notes.md> \\"
 echo "    \"$BASE_DIR/$PACKAGE_NAME\""
