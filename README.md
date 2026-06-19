@@ -1,12 +1,27 @@
-# BobZKernel — Optimized Linux 7.0
+# BobZKernel — Optimized Linux 7.1 (Pixel Slate variant)
 
-Custom optimized Linux kernel 7.0.x with the BORE scheduler, RSEQ abort latency observability, and performance/security tuning targeted at the Lenovo LOQ 15IRH8.
+This is the **`pixel-slate`** variant of BobZKernel — Linux 7.1.x built specifically for the **Google Pixel Slate** (codename `nocturne`). Compiled with `-march=skylake -mtune=skylake` to match the Slate's 8th gen Y-series CPU.
+
+The config carries ~156 driver trimmings against the laptop default (most server/legacy/non-Intel drivers stripped, ChromeOS EC sensors and AVS audio kept). Result: smaller kernel image (~102 MB tarball vs ~117 MB for the laptop variant).
+
+For the multi-variant project overview (laptop, workpc, generic, ...) see the [master branch README](https://github.com/thewraith420/BobZKernel/tree/master). For just the binary for this variant, see [v7.1.0-pixel-slate](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-pixel-slate).
+
+## Hardware variants
+
+| Variant | Branch | Target hardware | Release |
+|---|---|---|---|
+| **Default (laptop)** | `master` / `linux-7.1` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | [v7.1.0](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0) |
+| **workpc** | `workpc` | AMD FX-series Piledriver desktop (AM3+ with Radeon HD7000-class iGPU) | [v7.1.0-workpc](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-workpc) |
+| **Pixel Slate** | `pixel-slate` | Google Pixel Slate (codename `nocturne`, Skylake/Kaby Lake) | [v7.1.0-pixel-slate](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-pixel-slate) |
+| **Generic x86-64-v2** | `generic-build` | Universal modern x86-64 (Intel Nehalem 2008+, AMD Bulldozer 2011+) | [v7.1.1-generic](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.1-generic) |
+
+Each variant uses the same core patch stack and feature set, but differs in CPU codegen target (`-march=native` / `-march=bdver2` / `-march=skylake` / `-march=x86-64-v2`) and driver subset (Pixel Slate keeps ChromeOS EC drivers + AVS audio; workpc keeps Radeon built-in for early KMS; etc.). Pick the variant that matches your hardware.
 
 ## Features
 
 ### Scheduler
 - **BORE Scheduler** — Burst-Oriented Response Enhancer for desktop responsiveness (vanilla-compatible variant; CachyOS-required version intentionally not used).
-- **`CONFIG_RSEQ_SLICE_EXTENSION=y`** — RSEQ time slice extension. Graduated to mainline in Linux 7.0; was custom patch 9002 in 6.19.
+- **`CONFIG_RSEQ_SLICE_EXTENSION=y`** — RSEQ time slice extension. Graduated to mainline in Linux 7.0.
   - Runtime tunable: `/sys/kernel/debug/rseq/slice_ext_nsec` (range 5000–50000 ns)
   - Observability via `/sys/kernel/debug/rseq/stats`
 - **9003-rseq-latency-histogram patch** — 5-bucket abort latency histogram + `avg_ns`, ported from 6.19.
@@ -14,131 +29,192 @@ Custom optimized Linux kernel 7.0.x with the BORE scheduler, RSEQ abort latency 
 
 ### Compiler & CPU Optimizations
 - **LTO Clang Full** (`CONFIG_LTO_CLANG_FULL=y`) — whole-program link-time optimization via Clang.
-- **march=native** (`CONFIG_X86_NATIVE_CPU=y`) — tuned for Intel i5-13420H (13th Gen Raptor Lake).
+- **Per-variant CPU codegen** — `-march=native` (laptop), `-march=bdver2` (workpc), `-march=skylake` (pixel-slate), or `-march=x86-64-v2` (generic).
 - Built with **Clang/LLVM-19** + **ccache**.
 
 ### Storage, Memory, Network
-- **NVMe cluster-aware IRQ affinity** — graduated to mainline in 7.0; was patch 9010 in 6.19. Each NVMe queue pins 1:1 to a CPU.
+- **NVMe cluster-aware IRQ affinity** — graduated to mainline in 7.0. Each NVMe queue pins 1:1 to a CPU.
 - **ZRAM** (`CONFIG_ZRAM=y`, zstd compression).
 - **ZSWAP** (`CONFIG_ZSWAP=y`, zstd compression, enabled by default).
 - **BBRv3 TCP congestion control** (`CONFIG_DEFAULT_TCP_CONG="bbr"`).
 
 ### Security
-- **RANDSTRUCT Full** (`CONFIG_RANDSTRUCT_FULL=y`) — randomized layouts for sensitive kernel structures. Requires NVIDIA driver to be re-patched after each driver package update (handled by `scripts/nvidia-randstruct-fix.sh`).
+- **RANDSTRUCT Full** (`CONFIG_RANDSTRUCT_FULL=y`) — randomized layouts for sensitive kernel structures. Requires NVIDIA driver to be re-patched after each driver package update (handled by `scripts/nvidia-randstruct-fix.sh`; only relevant to variants that run NVIDIA).
 
-### DKMS Modules (Auto-Rebuilt by Build Pipeline)
+### DKMS Modules (laptop variant)
 - **NVIDIA 610.43.02** — open kernel modules, with automatic RANDSTRUCT compatibility fixes.
 - **LenovoLegionLinux** — pulled directly from upstream [johnfanv2/LenovoLegionLinux](https://github.com/johnfanv2/LenovoLegionLinux) master. The kernel patch `9100-platform-profile-accept-custom` lets userspace (TLP, etc.) write `custom` to the aggregate `/sys/firmware/acpi/platform_profile`, replacing the need for an out-of-tree profile alias.
 - **xpadneo** — advanced Xbox controller driver (rumble, battery reporting, low-latency).
 
-## Target Hardware
+Other variants don't ship DKMS modules — `workpc` has an AMD Radeon iGPU, `pixel-slate` and `generic-build` are configured for their target hardware in-tree.
 
-- **Device**: Lenovo LOQ 15IRH8
-- **CPU**: Intel i5-13420H (13th Gen, 8 cores / 12 threads)
-- **GPU**: NVIDIA GeForce RTX 3050 6GB (Optimus — i915 display, NVIDIA render)
-- **RAM**: 8 GB
-- **OS**: Debian GNU/Linux 13 (trixie)
+## Target Hardware (Pixel Slate variant)
 
-The build pipeline is parameterized enough that it should work on similar hardware; the kernel config is named `config-7.0-march-native` to make it clear that the binary is hardware-specific.
+Verified on:
+
+- **Device**: Google Pixel Slate (codename `nocturne`)
+- **CPU**: Intel 8th gen Y-series (Skylake / Kaby Lake era)
+- **GPU**: Integrated Intel iGPU (`i915`)
+- **EC**: Nuvoton NPCX796F running `nocturne_v2.2.x` firmware — accelerometer, gyro, light, lid switch, battery, fingerprint all routed via `cros_ec`
+- **Audio**: Maxim MAX98373 codec via Intel **AVS** driver (not SOF — there's no SOF topology for the Slate's Skylake+MAX98373 combo, so kernel falls back to AVS, which works fine)
+- **Display**: 3000×2000 @ 3:2 touchscreen with i2c-hid Atmel maXTouch
+- **OS tested**: Ubuntu 25.10 with GNOME Shell 49.0 on Wayland
+
+## Required userspace for full functionality
+
+The kernel exposes the hardware correctly, but two userspace pieces are needed alongside it:
+
+### 1. Accelerometer mount matrix (for auto-rotation)
+
+`/etc/udev/rules.d/99-pixel-slate-accelerometer.rules`:
+```
+ACTION=="add", SUBSYSTEM=="iio", ATTRS{name}=="cros-ec-accel", ENV{ACCEL_MOUNT_MATRIX}="0, 1, 0; -1, 0, 0; 0, 0, 1"
+```
+
+Without this, iio-sensor-proxy has no idea how the accelerometer is physically oriented relative to the screen, and GNOME/Phosh/etc. won't auto-rotate or will rotate in the wrong direction.
+
+### 2. Module blacklist on the kernel cmdline
+
+Add `module_blacklist=hid_google_hammer,cros_usbpd_notify` to your kernel command line.
+
+- `hid_google_hammer` is the folio keyboard HID driver — only useful if you actually use the pogo-pin keyboard. Most Linux-on-Slate users go with a Bluetooth keyboard.
+- `cros_usbpd_notify` — known to cause dmesg spam or instability on Slate; blacklisting it is a known fix.
 
 ## Installation
 
 ### Build from source
 
+Pick the variant for your hardware:
+
 ```bash
-./scripts/update-and-build-7.0.sh
+git clone https://github.com/thewraith420/BobZKernel
+cd BobZKernel
+
+# Default (laptop, march=native) — master branch is already checked out
+./scripts/update-and-build-7.1.sh
+
+# Or pick a variant:
+git checkout workpc        # AMD Piledriver
+git checkout pixel-slate   # Google Pixel Slate
+git checkout generic-build # Universal x86-64-v2
+
+./scripts/update-and-build-7.1.sh
 ```
 
-The script handles 9 steps: detect latest `v7.0.x` tag → clean → apply patches → configure → build → install → NVIDIA DKMS check → LenovoLegionLinux DKMS update (upstream master) → summary.
+The script handles 9 steps: detect latest `v7.1.x` tag → clean → apply patches → configure → build → install → NVIDIA DKMS check → LenovoLegionLinux DKMS update (upstream master) → summary.
+
+First-time setup: if `builds/linux-7.1/` doesn't exist, Step 1 auto-clones the stable kernel tree.
 
 For unattended runs:
 ```bash
-./scripts/update-and-build-7.0.sh --yes
+./scripts/update-and-build-7.1.sh --yes
 ```
 
 To skip the kernel update check (use whatever's already checked out):
 ```bash
-./scripts/update-and-build-7.0.sh --skip-update
+./scripts/update-and-build-7.1.sh --skip-update
 ```
 
 ### Install on a different machine (portable installer)
 
+When the build pipeline reaches Step 6, pick option 2 instead of installing locally:
+
 ```bash
-./scripts/create-portable-installer.sh 7.0
-# Copy the resulting tarball, then on target:
+./scripts/create-portable-installer-7.1.sh
+# Or via the Step 6 prompt during update-and-build-7.1.sh
+```
+
+Produces a ~100-120 MB tarball. Copy to the target machine, then:
+
+```bash
 tar -xzf BobZKernel-*-installer.tar.gz
-cd installer-*/
 sudo ./install.sh
 ```
 
+The installer auto-detects your distro and bootloader (Debian/Ubuntu/Mint, Fedora/RHEL, Arch/Manjaro, openSUSE).
+
+### Install pre-built (from GitHub Releases)
+
+Pre-built tarballs for the variants above are attached to their respective releases — see the [Hardware variants table](#hardware-variants).
+
 ## Verification
 
-After reboot, expected state:
+After reboot on the Slate:
 
 ```bash
 uname -r
-# 7.0.11-BobZKernel (or current point release)
-
-# LTO + native CPU
-grep -E "^CONFIG_LTO_CLANG_FULL|^CONFIG_X86_NATIVE_CPU" /boot/config-$(uname -r)
+# 7.1.0-BobZKernel-pixel-slate (or current point release)
 
 # BORE active
 sudo sysctl kernel.sched_bore
 # kernel.sched_bore = 1
 
-# RSEQ slice extension + histogram
-sudo cat /sys/kernel/debug/rseq/stats
+# Cros-EC sensors enumerated (accel + gyro + light)
+ls /sys/bus/iio/devices/
+# iio:device{0..3} mapped to acpi-als, cros-ec-accel, cros-ec-gyro, cros-ec-light
 
-# NVMe cluster-aware (each queue pinned to its own CPU)
-grep nvme0q /proc/interrupts
+# iio-sensor-proxy receiving the mount matrix from the udev rule
+sudo udevadm info /sys/bus/iio/devices/iio:device1 | grep ACCEL_MOUNT_MATRIX
+# E: ACCEL_MOUNT_MATRIX=0, 1, 0; -1, 0, 0; 0, 0, 1
 
-# Lenovo platform profile choices
-cat /sys/firmware/acpi/platform_profile_choices
-# low-power balanced performance max-power custom
+# AVS audio modules loaded
+lsmod | grep -E "^snd_soc_avs"
+
+# monitor-sensor reports orientation (KEY auto-rotate test)
+sudo monitor-sensor
+# === Has accelerometer (orientation: ...)
+# Tilt changed: face-up
 ```
 
-## Patch Stack (7.0)
+## Patch Stack (7.1)
 
-In `patches/cachyos-7.0/`:
+In `patches/cachyos-7.1/`:
 
 - `0001-bore.patch` — BORE scheduler (vanilla variant, no `CONFIG_CACHY` required).
 - `9003-rseq-latency-histogram.patch` — abort latency histogram (5 bins + avg_ns).
-- `0001-acpi-call.patch`, `0001-rt-i915.patch`, `dkms-clang.patch` — CachyOS support patches.
+- `0001-acpi-call.patch`, `dkms-clang.patch` — CachyOS support patches.
 - `9100-platform-profile-accept-custom.patch` — lets the aggregate `/sys/firmware/acpi/platform_profile` accept writes of `custom` (needed so TLP can drive the legion-laptop "custom" profile directly).
 
-Patches pending consideration for 7.0:
+**Dropped going 7.0 → 7.1:**
+- `0001-rt-i915.patch` — PREEMPT_RT compatibility shim. CachyOS dropped it for 7.1; we don't build PREEMPT_RT, so the IS_ENABLED guards compile-time-evaluate to true. The patch was a no-op for our config.
+- `0001-cgroup-vram.patch` — dmem cgroup VRAM controller. Already dropped in 7.0.11 (TTM stable backports broke it); CachyOS dropped it for 7.1 too. Not exercised on single-user laptop with no container GPU workloads.
+
+Patches pending consideration:
 - **Per-thread RSEQ abort suppression** (was 9004 on 6.19, exponential backoff 10ms → 320ms).
-- **Revocable Resource Management** (was 6.18-only, never ported forward).
+- **Revocable Resource Management** — pure infrastructure with no in-tree consumers; deliberately not ported forward past 6.18.
 
 ## Directory Structure
 
 ```
 BobZKernel/
 ├── builds/
-│   └── linux-7.0/                # Kernel source (gitignored — checked out by build script)
+│   └── linux-7.1/                  # Kernel source (gitignored — auto-cloned by build script)
 ├── scripts/
-│   ├── update-and-build-7.0.sh   # Main pipeline (9 steps)
-│   ├── build-kernel-7.0.sh       # Kernel build with LTO + ccache
-│   ├── install-kernel-7.0.sh     # Install with DKMS, initramfs, GRUB
-│   ├── nvidia-randstruct-fix.sh  # Re-applies __no_randomize_layout post NVIDIA update
+│   ├── update-and-build-7.1.sh     # Main pipeline (9 steps)
+│   ├── build-kernel-7.1.sh         # Kernel build with LTO + ccache (per-branch KCFLAGS)
+│   ├── install-kernel-7.1.sh       # Install with DKMS, initramfs, GRUB
+│   ├── create-portable-installer-7.1.sh
+│   ├── nvidia-randstruct-fix.sh    # Re-applies __no_randomize_layout post NVIDIA update
 │   ├── configure-nvidia-suspend.sh
 │   ├── monitor-rseq-stats.sh
-│   └── ...                        # Plus assorted RSEQ/NVIDIA tooling
+│   └── ...                          # Plus assorted RSEQ/NVIDIA tooling
 ├── patches/
-│   └── cachyos-7.0/              # 7.0 patch set
+│   └── cachyos-7.1/                # 7.1 patch set
 ├── configs/
-│   └── config-7.0-march-native   # Kernel config (LTO Full, march=native, ...)
-├── CONTEXT/                       # Project documentation
+│   ├── config-7.1-march-native     # Laptop (Intel Raptor Lake)
+│   ├── config-7.1-workpc           # AMD Piledriver + Radeon (on workpc branch)
+│   ├── config-7.1-pixel-slate      # Google Pixel Slate (on pixel-slate branch)
+│   └── config-7.1-generic          # Universal x86-64-v2 (on generic-build branch)
+├── CONTEXT/                         # Project documentation
 │   ├── PROJECT-OVERVIEW.md
 │   ├── BUILD-STATUS.md
 │   ├── BUILD-TROUBLESHOOTING.md
-│   ├── QUICK-START.md
-│   └── DEBUG-PRINTK-LOCATIONS.md  # RSEQ debug printk reference
+│   └── QUICK-START.md
 └── tests/
-    └── rseq-slice-extension/      # RSEQ tests (carried over from 6.19)
+    └── rseq-slice-extension/        # RSEQ tests (carried over from 6.19)
 ```
 
-Legacy branches `linux-6.19`, `linux-6.18`, etc. remain available for historical reference.
+Branch tags `workpc-6.18-archive`, `generic-build-6.18-archive`, `pixel-slate-6.18-archive` preserve each variant's pre-rebase tip from before the 7.1 migration. Historical branches `linux-7.0`, `linux-6.19`, `linux-6.18` remain available for reference.
 
 ## Troubleshooting
 
@@ -146,9 +222,11 @@ See `CONTEXT/BUILD-TROUBLESHOOTING.md` for detailed error solutions.
 
 **NVIDIA suspend crash after driver update** — Run `sudo scripts/nvidia-randstruct-fix.sh`. RANDSTRUCT shuffles struct layouts each kernel build; the NVIDIA DKMS source needs `__no_randomize_layout` re-applied each time the driver package is updated.
 
-**LenovoLegionLinux platform_profile not showing up** — On kernel 7.0 the driver registers a virtual platform device. If `/sys/class/platform-profile/` is empty, check `dmesg | grep legion` for probe errors; re-run the build script to pull the latest upstream LLL commit.
+**LenovoLegionLinux platform_profile not showing up** — On kernel 7.x the driver registers a virtual platform device. If `/sys/class/platform-profile/` is empty, check `dmesg | grep legion` for probe errors; re-run the build script to pull the latest upstream LLL commit.
 
-**TLP config writes silently rejected** — TLP doesn't validate, but the kernel does. Accepted profile names on this hardware: `low-power`, `balanced`, `performance`, `max-power`, `custom`. The `custom` profile (purple LED, AC power mode) requires patch `9100-platform-profile-accept-custom` in the running kernel — without it the aggregate sysfs returns `-EINVAL` on any write of `custom`.
+**TLP config writes silently rejected** — TLP doesn't validate, but the kernel does. Accepted profile names on Lenovo Legion/LOQ hardware: `low-power`, `balanced`, `performance`, `max-power`, `custom`. The `custom` profile (purple LED, AC power mode) requires patch `9100-platform-profile-accept-custom` in the running kernel — without it the aggregate sysfs returns `-EINVAL` on any write of `custom`.
+
+**Step 7 NVIDIA DKMS failure after choosing portable installer** — Expected and benign. Step 7 tries to verify NVIDIA DKMS against the kernel that was supposed to be installed locally; if you picked option 2 (portable installer) at Step 6, no kernel was actually installed on this machine, so Step 7 has nothing to find. The portable tarball is fine.
 
 ## Credits
 
