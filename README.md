@@ -9,7 +9,7 @@ Custom optimized Linux kernel **7.1.x** with the BORE scheduler, RSEQ abort late
 | **Default (laptop)** | `master` / `linux-7.1` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | [v7.1.0](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0) |
 | **workpc** | `workpc` | AMD FX-series Piledriver desktop (AM3+ with Radeon HD7000-class iGPU) | [v7.1.0-workpc](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-workpc) |
 | **Pixel Slate** | `pixel-slate` | Google Pixel Slate (codename `nocturne`, Skylake/Kaby Lake) | [v7.1.0-pixel-slate](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-pixel-slate) |
-| **Generic x86-64-v2** | `generic-build` | Universal modern x86-64 (Intel Nehalem 2008+, AMD Bulldozer 2011+) | — *(builds on demand)* |
+| **Generic x86-64-v2** | `generic-build` | Universal modern x86-64 (Intel Nehalem 2008+, AMD Bulldozer 2011+) | [v7.1.1-generic](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.1-generic) |
 
 Each variant uses the same core patch stack and feature set, but differs in CPU codegen target (`-march=native` / `-march=bdver2` / `-march=skylake` / `-march=x86-64-v2`) and driver subset (Pixel Slate keeps ChromeOS EC drivers + AVS audio; workpc keeps Radeon built-in for early KMS; etc.). Pick the variant that matches your hardware.
 
