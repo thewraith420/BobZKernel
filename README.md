@@ -73,12 +73,17 @@ ACTION=="add", SUBSYSTEM=="iio", ATTRS{name}=="cros-ec-accel", ENV{ACCEL_MOUNT_M
 
 Without this, iio-sensor-proxy has no idea how the accelerometer is physically oriented relative to the screen, and GNOME/Phosh/etc. won't auto-rotate or will rotate in the wrong direction.
 
-### 2. Module blacklist on the kernel cmdline
+### 2. Kernel cmdline (module blacklist + backlight)
 
-Add `module_blacklist=hid_google_hammer,cros_usbpd_notify` to your kernel command line.
+Add to your kernel command line:
+```
+module_blacklist=hid_google_hammer,cros_usbpd_notify i915.enable_dpcd_backlight=2 i915.enable_psr=0
+```
 
 - `hid_google_hammer` is the folio keyboard HID driver — only useful if you actually use the pogo-pin keyboard. Most Linux-on-Slate users go with a Bluetooth keyboard.
 - `cros_usbpd_notify` — known to cause dmesg spam or instability on Slate; blacklisting it is a known fix.
+- **`i915.enable_dpcd_backlight=2`** (FORCE_VESA) — **required for brightness control to work.** The Slate's eDP panel sets brightness over DPCD AUX but enables the backlight via the PWM pin. This forces i915 to the VESA AUX backlight interface (skipping the Intel HDR path). Pairs with the `9200-i915-pixel-slate-aux-backlight.patch` in this build, which reverts a 7.x change that otherwise rejects this panel (it requires `AUX_ENABLE_CAP`, which the Slate lacks) and silently falls back to a non-functional native PWM backlight. Without both the patch **and** this cmdline, the brightness slider/keys appear to work but the panel never physically dims.
+- `i915.enable_psr=0` — disables Panel Self-Refresh (avoids eDP quirks on this panel).
 
 ## Installation
 
