@@ -11141,7 +11141,11 @@ CONFIG_USB4=m
 #
 # Android
 #
-# CONFIG_ANDROID_BINDER_IPC is not set
+# BobZKernel pixel-slate: binder for Waydroid (Android apps on a touch tablet).
+# Modern Waydroid no longer needs ashmem (uses memfd); binderfs is enough.
+CONFIG_ANDROID_BINDER_IPC=y
+CONFIG_ANDROID_BINDERFS=y
+CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"
 # end of Android
 
 CONFIG_LIBNVDIMM=y
