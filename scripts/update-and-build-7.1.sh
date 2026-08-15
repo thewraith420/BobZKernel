@@ -438,11 +438,18 @@ KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION
 
 echo -e "${BLUE}Kernel built: $KERNELRELEASE${NC}"
 echo ""
+# Codegen target for the summary — mirror build-kernel-7.1.sh's branch→march map
+case "$BRANCH" in
+    pixel-slate)                    MARCH_DESC="march=skylake (Kaby Lake / Pixel Slate) optimizations" ;;
+    master|march-native|linux-7.1)  MARCH_DESC="march=native optimizations" ;;
+    *)                              MARCH_DESC="architecture-specific optimizations ($BRANCH)" ;;
+esac
+
 echo -e "${BLUE}Features included:${NC}"
 echo "  • CachyOS scheduler patches (BORE)"
 echo "  • RSEQ Timeslice Extension with statistics"
 echo "  • Cluster-aware CPU grouping (optimized NVMe IRQ affinity)"
-echo "  • march=native optimizations"
+echo "  • $MARCH_DESC"
 echo "  • LLVM/Clang compilation"
 if [ "$SKIP_NVIDIA" = false ]; then
     echo "  • NVIDIA 595.58.03 compatibility patches"
