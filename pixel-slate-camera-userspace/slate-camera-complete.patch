@@ -263,7 +263,7 @@
  
  } /* namespace libcamera */
 --- a/src/libcamera/pipeline/simple/simple.cpp	2026-01-29 07:17:26.000000000 -0500
-+++ b/src/libcamera/pipeline/simple/simple.cpp	2026-08-19 14:45:30.532282429 -0400
++++ b/src/libcamera/pipeline/simple/simple.cpp	2026-08-21 19:52:38.824600013 -0400
 @@ -32,6 +32,7 @@
  #include <libcamera/pixel_format.h>
  #include <libcamera/stream.h>
@@ -272,20 +272,27 @@
  #include "libcamera/internal/camera.h"
  #include "libcamera/internal/camera_manager.h"
  #include "libcamera/internal/camera_sensor.h"
-@@ -260,6 +261,12 @@
+@@ -260,6 +261,19 @@
  	{ "imx7-csi", { { "pxp", 1 } }, true },
  	{ "intel-ipu6", {}, true },
  	{ "intel-ipu7", {}, true },
++#if !HAVE_PIPELINE_IPU3
 +	/*
 +	 * IPU3 CIO2: the CSI-2 receiver alone, with the staging ImgU ISP left
 +	 * out of the pipeline entirely. Frames arrive as IPU3-packed Bayer,
 +	 * which the software ISP unpacks (see debayer_cpu.cpp).
++	 *
++	 * Only claimed when the dedicated ipu3 handler is absent from this
++	 * build. Both handlers match the same media device, and this one would
++	 * win by registration order, silently reducing an IPU3 machine to a
++	 * software ISP even though its hardware ISP was compiled in.
 +	 */
 +	{ "ipu3-cio2", {}, true },
++#endif
  	{ "j721e-csi2rx", {}, true },
  	{ "mtk-seninf", { { "mtk-mdp", 3 } }, false },
  	{ "mxc-isi", {}, false },
-@@ -713,6 +720,51 @@
+@@ -713,6 +727,51 @@
  
  	V4L2VideoDevice::Formats videoFormats = video_->formats(format.code);
  
@@ -337,6 +344,19 @@
  	LOG(SimplePipeline, Debug)
  		<< "Adding configuration for " << format.size
  		<< " in pixel formats [ "
+--- a/src/libcamera/pipeline/meson.build	2026-01-29 07:17:26.000000000 -0500
++++ b/src/libcamera/pipeline/meson.build	2026-08-21 19:52:14.017075471 -0400
+@@ -12,6 +12,10 @@
+         continue
+     endif
+ 
++    # Expose which pipeline handlers this build contains, so that a generic
++    # handler can defer to a device-specific one that is also present.
++    config_h.set('HAVE_PIPELINE_' + pipeline.to_upper().underscorify(), 1)
++
+     subdirs += pipeline
+     subdir(pipeline)
+ 
 --- a/src/libcamera/v4l2_pixelformat.cpp	2026-01-29 07:17:26.000000000 -0500
 +++ b/src/libcamera/v4l2_pixelformat.cpp	2026-08-19 14:48:32.211792823 -0400
 @@ -169,6 +169,19 @@
@@ -510,3 +530,195 @@
  		LOG(CameraSensor, Error)
  			<< "Camera sensor does not support test pattern modes.";
  		return -EINVAL;
+--- a/src/ipa/ipu3/ipa_context.h	2026-01-29 07:17:26.000000000 -0500
++++ b/src/ipa/ipu3/ipa_context.h	2026-08-21 20:45:34.905976401 -0400
+@@ -30,6 +30,14 @@
+ 
+ 	struct {
+ 		ipu3_uapi_grid_config afGrid;
++		/*
++		 * Focus travel of the attached VCM, read from the lens
++		 * controls rather than assumed. Sweep step is scaled to match,
++		 * so the search takes a comparable number of iterations
++		 * whatever the range.
++		 */
++		uint32_t maxFocusSteps;
++		uint32_t coarseSearchStep;
+ 	} af;
+ 
+ 	struct {
+@@ -41,6 +49,10 @@
+ 
+ 	struct {
+ 		int32_t defVBlank;
++		int32_t minVBlank;
++		int32_t maxVBlank;
++		/* Maximum exposure, in lines, achievable at defVBlank. */
++		int32_t maxExposureLines;
+ 		utils::Duration lineDuration;
+ 		Size size;
+ 	} sensor;
+--- a/src/ipa/ipu3/ipu3.cpp	2026-01-29 07:17:26.000000000 -0500
++++ b/src/ipa/ipu3/ipu3.cpp	2026-08-21 19:35:25.243791511 -0400
+@@ -205,6 +205,8 @@
+ {
+ 	const ControlInfo vBlank = sensorControls.find(V4L2_CID_VBLANK)->second;
+ 	context_.configuration.sensor.defVBlank = vBlank.def().get<int32_t>();
++	context_.configuration.sensor.minVBlank = vBlank.min().get<int32_t>();
++	context_.configuration.sensor.maxVBlank = vBlank.max().get<int32_t>();
+ 
+ 	const ControlInfo &v4l2Exposure = sensorControls.find(V4L2_CID_EXPOSURE)->second;
+ 	int32_t minExposure = v4l2Exposure.min().get<int32_t>();
+@@ -219,12 +221,34 @@
+ 	 * to know the limits for exposure time and analogue gain.
+ 	 * As it depends on the sensor, update it with the controls.
+ 	 *
+-	 * \todo take VBLANK into account for maximum exposure time
++	 * The exposure range a sensor reports is the range valid for its
++	 * *current* vertical blanking. Extending VBLANK lengthens the frame and
++	 * raises the exposure ceiling one line per line of blanking added, so
++	 * the achievable maximum is the reported maximum plus the blanking still
++	 * available. Reporting only the former makes the AGC saturate at the
++	 * shortest-frame exposure and compensate with digital gain, which on a
++	 * dark scene yields a dim, noisy image while the sensor still has
++	 * headroom.
++	 *
++	 * setControls() extends VBLANK to match whatever exposure the AGC then
++	 * asks for, so frame rate is traded for light only when it is needed.
+ 	 */
++	context_.configuration.sensor.maxExposureLines = maxExposure;
++
++	int32_t extraVBlank = std::max(0, context_.configuration.sensor.maxVBlank -
++					  context_.configuration.sensor.defVBlank);
++	int32_t maxExposureExtended = maxExposure + extraVBlank;
++
+ 	context_.configuration.agc.minExposureTime = minExposure * context_.configuration.sensor.lineDuration;
+-	context_.configuration.agc.maxExposureTime = maxExposure * context_.configuration.sensor.lineDuration;
++	context_.configuration.agc.maxExposureTime = maxExposureExtended * context_.configuration.sensor.lineDuration;
+ 	context_.configuration.agc.minAnalogueGain = camHelper_->gain(minGain);
+ 	context_.configuration.agc.maxAnalogueGain = camHelper_->gain(maxGain);
++
++	LOG(IPAIPU3, Debug)
++		<< "Exposure ceiling " << maxExposure << " lines at VBLANK "
++		<< context_.configuration.sensor.defVBlank << ", extended to "
++		<< maxExposureExtended << " lines using VBLANK up to "
++		<< context_.configuration.sensor.maxVBlank;
+ }
+ 
+ /**
+@@ -645,7 +669,24 @@
+ 	int32_t exposure = context_.activeState.agc.exposure;
+ 	int32_t gain = camHelper_->gainCode(context_.activeState.agc.gain);
+ 
++	/*
++	 * An exposure longer than the frame is not achievable, so extend
++	 * vertical blanking by however many lines the request overshoots the
++	 * ceiling the sensor reports at its default blanking. Short exposures
++	 * leave VBLANK at its default, so frame rate is only sacrificed for
++	 * light when the scene actually requires it.
++	 *
++	 * VBLANK must be applied before EXPOSURE: the sensor derives the valid
++	 * exposure range from the frame length, and a longer exposure submitted
++	 * against the old, shorter frame would simply be clamped away.
++	 */
++	const auto &sensorCfg = context_.configuration.sensor;
++	int32_t vBlank = std::clamp(sensorCfg.defVBlank +
++					    std::max(0, exposure - sensorCfg.maxExposureLines),
++				    sensorCfg.minVBlank, sensorCfg.maxVBlank);
++
+ 	ControlList ctrls(sensorCtrls_);
++	ctrls.set(V4L2_CID_VBLANK, vBlank);
+ 	ctrls.set(V4L2_CID_EXPOSURE, exposure);
+ 	ctrls.set(V4L2_CID_ANALOGUE_GAIN, gain);
+ 
+--- a/src/ipa/ipu3/algorithms/af.cpp	2026-01-29 07:17:26.000000000 -0500
++++ b/src/ipa/ipu3/algorithms/af.cpp	2026-08-21 20:46:31.597990674 -0400
+@@ -162,8 +162,42 @@
+ 	grid.y_start = utils::alignDown(start.y, 2);
+ 	grid.y_start |= IPU3_UAPI_GRID_Y_START_EN;
+ 
++	/*
++	 * Determine the VCM's actual focus travel from the lens controls
++	 * instead of assuming kMaxFocusSteps. Closes the
++	 * "\todo should be obtained from the VCM driver" above: a VCM with a
++	 * larger range than the assumed default would otherwise only ever be
++	 * driven over the near part of its travel, and could never reach focus
++	 * on subjects whose sharp position lies beyond it.
++	 *
++	 * Scale the coarse sweep step by the same factor, so the search still
++	 * completes in a comparable number of iterations rather than taking
++	 * proportionally longer on a longer-throw lens.
++	 */
++	context.configuration.af.maxFocusSteps = kMaxFocusSteps;
++	context.configuration.af.coarseSearchStep = kCoarseSearchStep;
++
++	const auto &focusCtrl = configInfo.lensControls.find(V4L2_CID_FOCUS_ABSOLUTE);
++	if (focusCtrl != configInfo.lensControls.end()) {
++		const int32_t lensMax = focusCtrl->second.max().get<int32_t>();
++
++		if (lensMax > 0) {
++			context.configuration.af.maxFocusSteps =
++				static_cast<uint32_t>(lensMax);
++			context.configuration.af.coarseSearchStep =
++				std::max(1U, static_cast<uint32_t>(
++						     kCoarseSearchStep * lensMax /
++						     static_cast<int32_t>(kMaxFocusSteps)));
++
++			LOG(IPU3Af, Info)
++				<< "VCM focus range 0-" << lensMax
++				<< ", coarse step "
++				<< context.configuration.af.coarseSearchStep;
++		}
++	}
++
+ 	/* Initial max focus step */
+-	maxStep_ = kMaxFocusSteps;
++	maxStep_ = context.configuration.af.maxFocusSteps;
+ 
+ 	/* Initial frame ignore counter */
+ 	afIgnoreFrameReset();
+@@ -209,7 +243,7 @@
+ 	if (afNeedIgnoreFrame())
+ 		return;
+ 
+-	if (afScan(context, kCoarseSearchStep)) {
++	if (afScan(context, context.configuration.af.coarseSearchStep)) {
+ 		coarseCompleted_ = true;
+ 		context.activeState.af.maxVariance = 0;
+ 		focus_ = context.activeState.af.focus -
+@@ -217,7 +251,7 @@
+ 		context.activeState.af.focus = focus_;
+ 		previousVariance_ = 0;
+ 		maxStep_ = std::clamp(focus_ + static_cast<uint32_t>((focus_ * kFineRange)),
+-				      0U, kMaxFocusSteps);
++				      0U, context.configuration.af.maxFocusSteps);
+ 	}
+ }
+ 
+@@ -260,7 +294,7 @@
+ 	previousVariance_ = 0.0;
+ 	coarseCompleted_ = false;
+ 	fineCompleted_ = false;
+-	maxStep_ = kMaxFocusSteps;
++	maxStep_ = context.configuration.af.maxFocusSteps;
+ }
+ 
+ /**
+--- a/src/libcamera/pipeline/ipu3/ipu3.cpp	2026-01-29 07:17:26.000000000 -0500
++++ b/src/libcamera/pipeline/ipu3/ipu3.cpp	2026-08-21 19:36:12.863185015 -0400
+@@ -1086,6 +1086,15 @@
+ 		std::unordered_map<uint32_t, DelayedControls::ControlParams> params = {
+ 			{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
+ 			{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
++			/*
++			 * The IPA extends vertical blanking to lengthen the
++			 * frame when the AGC asks for an exposure longer than
++			 * the current frame allows. It is a priority write: the
++			 * sensor clamps exposure to the frame length, so a
++			 * longer frame has to be programmed before the longer
++			 * exposure that depends on it.
++			 */
++			{ V4L2_CID_VBLANK, { delays.vblankDelay, true } },
+ 		};
+ 
+ 		data->delayedCtrls_ =
