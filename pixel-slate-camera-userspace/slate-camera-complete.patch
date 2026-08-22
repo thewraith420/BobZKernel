@@ -704,9 +704,159 @@
  }
  
  /**
+--- a/src/ipa/ipu3/algorithms/tone_mapping.cpp	2026-01-29 07:17:26.000000000 -0500
++++ b/src/ipa/ipu3/algorithms/tone_mapping.cpp	2026-08-21 22:06:26.471410132 -0400
+@@ -8,6 +8,7 @@
+ #include "tone_mapping.h"
+ 
+ #include <cmath>
++#include <stdlib.h>
+ #include <string.h>
+ 
+ /**
+@@ -90,11 +91,25 @@
+ 			  [[maybe_unused]] ControlList &metadata)
+ {
+ 	/*
+-	 * Hardcode gamma to 1.1 as a default for now.
++	 * Gamma applied by the ImgU's tone-mapping LUT.
+ 	 *
+-	 * \todo Expose gamma control setting through the libcamera control API
++	 * 1.0 makes the LUT an identity curve, i.e. no gamma correction at
++	 * this stage. Higher values open the midtones, but with no contrast or
++	 * tone curve after this stage they lift the black point too: measured
++	 * on this hardware, 2.2 left 0% of pixels in the bottom quarter of the
++	 * range, which reads as washed out. Chosen by eye on this display.
++	 *
++	 * \todo Expose gamma through the libcamera control API. Until then
++	 * LIBCAMERA_IPU3_GAMMA overrides this at runtime.
+ 	 */
+-	gamma_ = 1.1;
++	gamma_ = 1.0;
++
++	const char *gammaEnv = utils::secure_getenv("LIBCAMERA_IPU3_GAMMA");
++	if (gammaEnv) {
++		double value = atof(gammaEnv);
++		if (value >= 1.0 && value <= 4.0)
++			gamma_ = value;
++	}
+ 
+ 	if (context.activeState.toneMapping.gamma == gamma_)
+ 		return;
+--- a/src/ipa/ipu3/algorithms/awb.cpp	2026-01-29 07:17:26.000000000 -0500
++++ b/src/ipa/ipu3/algorithms/awb.cpp	2026-08-21 22:36:55.247583614 -0400
+@@ -8,8 +8,10 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <stdlib.h>
+ 
+ #include <libcamera/base/log.h>
++#include <libcamera/base/utils.h>
+ 
+ #include <libcamera/control_ids.h>
+ 
+@@ -119,6 +121,46 @@
+ 	0, 0, 8191, 0
+ };
+ 
++/*
++ * Build a colour correction matrix that applies a saturation factor.
++ *
++ * The identity matrix above leaves the sensor's raw channel crosstalk
++ * uncorrected, which collapses colours towards grey: measured on an IPU3
++ * device, mean chroma was 2.6 against a typical 15-25, with nothing in the
++ * frame exceeding 14.
++ *
++ * A properly calibrated CCM requires measuring the sensor against a colour
++ * chart and cannot be derived here. A saturation matrix is instead well
++ * defined without calibration: it interpolates between the luminance of a
++ * pixel and the pixel itself, so a factor of 1.0 reproduces the identity
++ * matrix exactly and larger factors scale chroma about the luma axis without
++ * shifting hue or altering brightness.
++ *
++ * This is a saturation control, not a colour calibration - it does not correct
++ * hue errors. It is a substantial improvement on identity, and a real
++ * per-sensor CCM should replace it if one is ever measured.
++ */
++static struct ipu3_uapi_ccm_mat_config ccmFromSaturation(double saturation)
++{
++	/* Rec.601 luma coefficients, matching the ImgU's YUV conversion. */
++	static constexpr double kLumaR = 0.299;
++	static constexpr double kLumaG = 0.587;
++	static constexpr double kLumaB = 0.114;
++	static constexpr double kOne = 8191.0;
++
++	auto coeff = [saturation](double luma, bool diagonal) {
++		double v = luma * (1.0 - saturation) + (diagonal ? saturation : 0.0);
++		return static_cast<int16_t>(std::lround(std::clamp(v * kOne,
++								   -32768.0, 32767.0)));
++	};
++
++	return {
++		coeff(kLumaR, true),  coeff(kLumaG, false), coeff(kLumaB, false), 0,
++		coeff(kLumaR, false), coeff(kLumaG, true),  coeff(kLumaB, false), 0,
++		coeff(kLumaR, false), coeff(kLumaG, false), coeff(kLumaB, true),  0
++	};
++}
++
+ /**
+  * \class Awb
+  * \brief A Grey world white balance correction algorithm
+@@ -295,8 +337,19 @@
+ 
+ 	LOG(IPU3Awb, Debug) << "Color temperature estimated: " << asyncResults_.temperatureK;
+ 
+-	/* The CCM matrix may change when color temperature will be used */
+-	params->acc_param.ccm = imguCssCcmDefault;
++	/*
++	 * \todo The CCM should come from a per-sensor calibration, and vary
++	 * with the estimated colour temperature. Until then apply a saturation
++	 * matrix, overridable at runtime with LIBCAMERA_IPU3_SATURATION.
++	 */
++	static const double saturation = []() {
++		const char *env = utils::secure_getenv("LIBCAMERA_IPU3_SATURATION");
++		double value = env ? atof(env) : 1.0;
++		return (value >= 0.0 && value <= 4.0) ? value : 1.0;
++	}();
++
++	params->acc_param.ccm = saturation == 1.0 ? imguCssCcmDefault
++						  : ccmFromSaturation(saturation);
+ 
+ 	params->use.acc_awb = 1;
+ 	params->use.acc_bnr = 1;
 --- a/src/libcamera/pipeline/ipu3/ipu3.cpp	2026-01-29 07:17:26.000000000 -0500
-+++ b/src/libcamera/pipeline/ipu3/ipu3.cpp	2026-08-21 19:36:12.863185015 -0400
-@@ -1086,6 +1086,15 @@
++++ b/src/libcamera/pipeline/ipu3/ipu3.cpp	2026-08-21 22:20:33.834815422 -0400
+@@ -453,7 +453,27 @@
+ 							      ImgUDevice::kOutputAlignHeight);
+ 			pixelFormat = formats::NV12;
+ 			bufferCount = IPU3CameraConfiguration::kBufferCount;
+-			streamFormats[pixelFormat] = { { ImgUDevice::kOutputMinSize, size } };
++
++			/*
++			 * Advertise everything the ImgU can produce, not just
++			 * the default size chosen above.
++			 *
++			 * kViewfinderSize is a sensible *default*, but using it
++			 * as the upper bound of the advertised range means an
++			 * application can never negotiate anything larger - and
++			 * a request below the sensor's binned mode also drives
++			 * the sensor into that binned mode, so the whole
++			 * pipeline runs at a quarter of the available
++			 * resolution with no way to opt out. StillCapture
++			 * already advertises the full range this way.
++			 */
++			Size maxSize = sensorResolution
++					       .boundedTo(ImgUDevice::kOutputMaxSize)
++					       .shrunkBy({ 1, 1 })
++					       .alignedDownTo(ImgUDevice::kOutputMarginWidth,
++							      ImgUDevice::kOutputMarginHeight);
++			streamFormats[pixelFormat] = { { ImgUDevice::kOutputMinSize,
++							 maxSize.expandedTo(size) } };
+ 
+ 			break;
+ 		}
+@@ -1086,6 +1106,15 @@
  		std::unordered_map<uint32_t, DelayedControls::ControlParams> params = {
  			{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
  			{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
