@@ -1,0 +1,104 @@
+--- a/src/ipa/ipu3/ipa_context.h	2026-01-29 07:17:26.000000000 -0500
++++ b/src/ipa/ipu3/ipa_context.h	2026-08-21 19:34:01.617317589 -0400
+@@ -41,6 +41,10 @@
+ 
+ 	struct {
+ 		int32_t defVBlank;
++		int32_t minVBlank;
++		int32_t maxVBlank;
++		/* Maximum exposure, in lines, achievable at defVBlank. */
++		int32_t maxExposureLines;
+ 		utils::Duration lineDuration;
+ 		Size size;
+ 	} sensor;
+--- a/src/ipa/ipu3/ipu3.cpp	2026-01-29 07:17:26.000000000 -0500
++++ b/src/ipa/ipu3/ipu3.cpp	2026-08-21 19:35:25.243791511 -0400
+@@ -205,6 +205,8 @@
+ {
+ 	const ControlInfo vBlank = sensorControls.find(V4L2_CID_VBLANK)->second;
+ 	context_.configuration.sensor.defVBlank = vBlank.def().get<int32_t>();
++	context_.configuration.sensor.minVBlank = vBlank.min().get<int32_t>();
++	context_.configuration.sensor.maxVBlank = vBlank.max().get<int32_t>();
+ 
+ 	const ControlInfo &v4l2Exposure = sensorControls.find(V4L2_CID_EXPOSURE)->second;
+ 	int32_t minExposure = v4l2Exposure.min().get<int32_t>();
+@@ -219,12 +221,34 @@
+ 	 * to know the limits for exposure time and analogue gain.
+ 	 * As it depends on the sensor, update it with the controls.
+ 	 *
+-	 * \todo take VBLANK into account for maximum exposure time
++	 * The exposure range a sensor reports is the range valid for its
++	 * *current* vertical blanking. Extending VBLANK lengthens the frame and
++	 * raises the exposure ceiling one line per line of blanking added, so
++	 * the achievable maximum is the reported maximum plus the blanking still
++	 * available. Reporting only the former makes the AGC saturate at the
++	 * shortest-frame exposure and compensate with digital gain, which on a
++	 * dark scene yields a dim, noisy image while the sensor still has
++	 * headroom.
++	 *
++	 * setControls() extends VBLANK to match whatever exposure the AGC then
++	 * asks for, so frame rate is traded for light only when it is needed.
+ 	 */
++	context_.configuration.sensor.maxExposureLines = maxExposure;
++
++	int32_t extraVBlank = std::max(0, context_.configuration.sensor.maxVBlank -
++					  context_.configuration.sensor.defVBlank);
++	int32_t maxExposureExtended = maxExposure + extraVBlank;
++
+ 	context_.configuration.agc.minExposureTime = minExposure * context_.configuration.sensor.lineDuration;
+-	context_.configuration.agc.maxExposureTime = maxExposure * context_.configuration.sensor.lineDuration;
++	context_.configuration.agc.maxExposureTime = maxExposureExtended * context_.configuration.sensor.lineDuration;
+ 	context_.configuration.agc.minAnalogueGain = camHelper_->gain(minGain);
+ 	context_.configuration.agc.maxAnalogueGain = camHelper_->gain(maxGain);
++
++	LOG(IPAIPU3, Debug)
++		<< "Exposure ceiling " << maxExposure << " lines at VBLANK "
++		<< context_.configuration.sensor.defVBlank << ", extended to "
++		<< maxExposureExtended << " lines using VBLANK up to "
++		<< context_.configuration.sensor.maxVBlank;
+ }
+ 
+ /**
+@@ -645,7 +669,24 @@
+ 	int32_t exposure = context_.activeState.agc.exposure;
+ 	int32_t gain = camHelper_->gainCode(context_.activeState.agc.gain);
+ 
++	/*
++	 * An exposure longer than the frame is not achievable, so extend
++	 * vertical blanking by however many lines the request overshoots the
++	 * ceiling the sensor reports at its default blanking. Short exposures
++	 * leave VBLANK at its default, so frame rate is only sacrificed for
++	 * light when the scene actually requires it.
++	 *
++	 * VBLANK must be applied before EXPOSURE: the sensor derives the valid
++	 * exposure range from the frame length, and a longer exposure submitted
++	 * against the old, shorter frame would simply be clamped away.
++	 */
++	const auto &sensorCfg = context_.configuration.sensor;
++	int32_t vBlank = std::clamp(sensorCfg.defVBlank +
++					    std::max(0, exposure - sensorCfg.maxExposureLines),
++				    sensorCfg.minVBlank, sensorCfg.maxVBlank);
++
+ 	ControlList ctrls(sensorCtrls_);
++	ctrls.set(V4L2_CID_VBLANK, vBlank);
+ 	ctrls.set(V4L2_CID_EXPOSURE, exposure);
+ 	ctrls.set(V4L2_CID_ANALOGUE_GAIN, gain);
+ 
+--- a/src/libcamera/pipeline/ipu3/ipu3.cpp	2026-01-29 07:17:26.000000000 -0500
++++ b/src/libcamera/pipeline/ipu3/ipu3.cpp	2026-08-21 19:36:12.863185015 -0400
+@@ -1086,6 +1086,15 @@
+ 		std::unordered_map<uint32_t, DelayedControls::ControlParams> params = {
+ 			{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
+ 			{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
++			/*
++			 * The IPA extends vertical blanking to lengthen the
++			 * frame when the AGC asks for an exposure longer than
++			 * the current frame allows. It is a priority write: the
++			 * sensor clamps exposure to the frame length, so a
++			 * longer frame has to be programmed before the longer
++			 * exposure that depends on it.
++			 */
++			{ V4L2_CID_VBLANK, { delays.vblankDelay, true } },
+ 		};
+ 
+ 		data->delayedCtrls_ =
