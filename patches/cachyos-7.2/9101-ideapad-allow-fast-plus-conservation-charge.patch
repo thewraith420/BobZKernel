@@ -1,0 +1,51 @@
+platform/x86: ideapad-laptop: stop erroring on Fast + Long_Life together
+
+ideapad_psy_ext_get_prop() treats the EC reporting both Rapid Charge and
+Conservation Mode simultaneously as an invalid state (dev_err + -EINVAL on
+every read of charge_types that catches it). On this hardware that
+combination is real and intentional, not a fault: Conservation caps the
+charge ceiling (e.g. 80%), while Rapid Charge governs how fast the battery
+gets there below that cap. The EC toggles Rapid on and off on its own as
+part of that behaviour, so the -EINVAL fired repeatedly (confirmed: every
+~5s) on a perfectly normal, user-configured charging setup, and any
+userspace reading charge_types during that window got a bare I/O error
+instead of a sensible value.
+
+Fix: drop the error path and let the existing priority-ordered checks below
+it run. Fast is reported when both are active, since it is the operative
+charging behaviour in that state; Long_Life is the governing limit, not
+itself a description of how the battery is currently charging.
+
+Confirmed on Google/LOQ 15IRH8: charge_types now reads cleanly as
+"Fast Standard [Long_Life]" instead of returning -EINVAL, and the repeating
+dev_err is gone, with charging behaviour completely unchanged.
+
+Signed-off-by: BobZKernel <bobgenaw420@gmail.com>
+---
+diff --git a/drivers/platform/x86/lenovo/ideapad-laptop.c b/drivers/platform/x86/lenovo/ideapad-laptop.c
+index 4fbc904f1..52b8fa58a 100644
+--- a/drivers/platform/x86/lenovo/ideapad-laptop.c
++++ b/drivers/platform/x86/lenovo/ideapad-laptop.c
+@@ -2095,12 +2095,16 @@ static int ideapad_psy_ext_get_prop(struct power_supply *psy,
+ 			   test_bit(GBMD_RAPID_CHARGE_STATE_BIT, &result));
+ 	is_conservation = test_bit(GBMD_CONSERVATION_STATE_BIT, &result);
+ 
+-	if (unlikely(is_rapid_charge && is_conservation)) {
+-		dev_err(&priv->platform_device->dev,
+-			"unexpected charge_types: both [Fast] and [Long_Life] are enabled\n");
+-		return -EINVAL;
+-	}
+-
++	/*
++	 * Fast + Long_Life together is a real, intentional EC state on this
++	 * hardware, not a fault: Conservation caps the charge ceiling (e.g.
++	 * 80%) while Rapid Charge governs how quickly it gets there below
++	 * that cap. The EC toggles Rapid on and off on its own as part of
++	 * that behaviour, so treating the combination as -EINVAL logged a
++	 * dev_err on every poll that caught it mid-toggle. Report Fast: it
++	 * is the active charging behaviour; Long_Life is the governing limit,
++	 * not itself a "the battery is charging like this" state.
++	 */
+ 	if (is_rapid_charge)
+ 		val->intval = POWER_SUPPLY_CHARGE_TYPE_FAST;
+ 	else if (is_conservation)
