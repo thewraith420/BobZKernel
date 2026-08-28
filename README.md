@@ -1,12 +1,12 @@
-# BobZKernel — Optimized Linux 7.1
+# BobZKernel — Optimized Linux 7.2
 
-Custom optimized Linux kernel **7.1.x** with the BORE scheduler, RSEQ abort latency observability, and performance/security tuning. Primary target is the Lenovo LOQ 15IRH8 laptop; **hardware-specific variants** live in separate branches and ship as separate GitHub releases.
+Custom optimized Linux kernel **7.2.x** with the BORE scheduler, RSEQ abort latency observability, and performance/security tuning. Primary target is the Lenovo LOQ 15IRH8 laptop; **hardware-specific variants** live in separate branches and ship as separate GitHub releases.
 
 ## Hardware variants
 
 | Variant | Branch | Target hardware | Release |
 |---|---|---|---|
-| **Default (laptop)** | `master` / `linux-7.1` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | [v7.1.0](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0) |
+| **Default (laptop)** | `master` / `linux-7.2` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | [v7.2.2](https://github.com/thewraith420/BobZKernel/releases/tag/v7.2.2) |
 | **workpc** | `workpc` | AMD FX-series Piledriver desktop (AM3+ with Radeon HD7000-class iGPU) | [v7.1.0-workpc](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-workpc) |
 | **Pixel Slate** | `pixel-slate` | Google Pixel Slate (codename `nocturne`, Skylake/Kaby Lake) | [v7.1.0-pixel-slate](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-pixel-slate) |
 | **Generic x86-64-v2** | `generic-build` | Universal modern x86-64 (Intel Nehalem 2008+, AMD Bulldozer 2011+) | [v7.1.1-generic](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.1-generic) |
@@ -65,28 +65,34 @@ git clone https://github.com/thewraith420/BobZKernel
 cd BobZKernel
 
 # Default (laptop, march=native) — master branch is already checked out
-./scripts/update-and-build-7.1.sh
+./scripts/update-and-build-7.2.sh
+```
 
-# Or pick a variant:
+Other variants are on their own branches and build with whichever pipeline that
+branch is currently on — check out the branch first and run the script that's
+actually there (`ls scripts/update-and-build-*.sh`), since a variant branch may
+still be one major version behind `master` at any given time:
+
+```bash
 git checkout workpc        # AMD Piledriver
 git checkout pixel-slate   # Google Pixel Slate
 git checkout generic-build # Universal x86-64-v2
 
-./scripts/update-and-build-7.1.sh
+./scripts/update-and-build-7.1.sh   # or -7.2.sh, once that branch is migrated
 ```
 
-The script handles 9 steps: detect latest `v7.1.x` tag → clean → apply patches → configure → build → install → NVIDIA DKMS check → LenovoLegionLinux DKMS update (upstream master) → summary.
+The script handles 9 steps: detect latest `v7.2.x` tag → clean → apply patches → configure → build → install → NVIDIA DKMS check → LenovoLegionLinux DKMS update (upstream master) → summary.
 
-First-time setup: if `builds/linux-7.1/` doesn't exist, Step 1 auto-clones the stable kernel tree.
+First-time setup: if `builds/linux-7.2/` doesn't exist, Step 1 auto-clones the stable kernel tree.
 
 For unattended runs:
 ```bash
-./scripts/update-and-build-7.1.sh --yes
+./scripts/update-and-build-7.2.sh --yes
 ```
 
 To skip the kernel update check (use whatever's already checked out):
 ```bash
-./scripts/update-and-build-7.1.sh --skip-update
+./scripts/update-and-build-7.2.sh --skip-update
 ```
 
 ### Install on a different machine (portable installer)
@@ -94,8 +100,8 @@ To skip the kernel update check (use whatever's already checked out):
 When the build pipeline reaches Step 6, pick option 2 instead of installing locally:
 
 ```bash
-./scripts/create-portable-installer-7.1.sh
-# Or via the Step 6 prompt during update-and-build-7.1.sh
+./scripts/create-portable-installer-7.2.sh
+# Or via the Step 6 prompt during update-and-build-7.2.sh
 ```
 
 Produces a ~100-120 MB tarball. Copy to the target machine, then:
@@ -117,7 +123,7 @@ After reboot, expected state on the laptop variant:
 
 ```bash
 uname -r
-# 7.1.0-BobZKernel (or current point release)
+# 7.2.2-BobZKernel (or current point release)
 
 # LTO + native CPU
 grep -E "^CONFIG_LTO_CLANG_FULL|^CONFIG_X86_NATIVE_CPU" /boot/config-$(uname -r)
@@ -137,14 +143,21 @@ cat /sys/firmware/acpi/platform_profile_choices
 # low-power balanced performance max-power custom
 ```
 
-## Patch Stack (7.1)
+## Patch Stack (7.2)
 
-In `patches/cachyos-7.1/`:
+In `patches/cachyos-7.2/`:
 
 - `0001-bore.patch` — BORE scheduler (vanilla variant, no `CONFIG_CACHY` required).
 - `9003-rseq-latency-histogram.patch` — abort latency histogram (5 bins + avg_ns).
 - `0001-acpi-call.patch`, `dkms-clang.patch` — CachyOS support patches.
 - `9100-platform-profile-accept-custom.patch` — lets the aggregate `/sys/firmware/acpi/platform_profile` accept writes of `custom` (needed so TLP can drive the legion-laptop "custom" profile directly).
+
+**Going 7.1 → 7.2: nothing dropped, nothing refreshed.** All five patches carried
+forward byte-for-byte and dry-run verified exact (zero fuzz/offset) against
+pristine `v7.2.2` before this release — including `0001-bore.patch`, which
+needed a hand refresh at the 7.1.5 point release. Checked upstream first, as
+always: neither CachyOS's `kernel-patches` repo nor firelzrd/bore-scheduler has
+published anything for the 7.x line.
 
 **Dropped going 7.0 → 7.1:**
 - `0001-rt-i915.patch` — PREEMPT_RT compatibility shim. CachyOS dropped it for 7.1; we don't build PREEMPT_RT, so the IS_ENABLED guards compile-time-evaluate to true. The patch was a no-op for our config.
@@ -159,23 +172,23 @@ Patches pending consideration:
 ```
 BobZKernel/
 ├── builds/
-│   └── linux-7.1/                  # Kernel source (gitignored — auto-cloned by build script)
+│   └── linux-7.2/                  # Kernel source (gitignored — auto-cloned by build script)
 ├── scripts/
-│   ├── update-and-build-7.1.sh     # Main pipeline (9 steps)
-│   ├── build-kernel-7.1.sh         # Kernel build with LTO + ccache (per-branch KCFLAGS)
-│   ├── install-kernel-7.1.sh       # Install with DKMS, initramfs, GRUB
-│   ├── create-portable-installer-7.1.sh
+│   ├── update-and-build-7.2.sh     # Main pipeline (9 steps)
+│   ├── build-kernel-7.2.sh         # Kernel build with LTO + ccache (per-branch KCFLAGS)
+│   ├── install-kernel-7.2.sh       # Install with DKMS, initramfs, GRUB
+│   ├── create-portable-installer-7.2.sh
 │   ├── nvidia-randstruct-fix.sh    # Re-applies __no_randomize_layout post NVIDIA update
 │   ├── configure-nvidia-suspend.sh
 │   ├── monitor-rseq-stats.sh
 │   └── ...                          # Plus assorted RSEQ/NVIDIA tooling
 ├── patches/
-│   └── cachyos-7.1/                # 7.1 patch set
+│   └── cachyos-7.2/                # 7.2 patch set
 ├── configs/
-│   ├── config-7.1-march-native     # Laptop (Intel Raptor Lake)
-│   ├── config-7.1-workpc           # AMD Piledriver + Radeon (on workpc branch)
-│   ├── config-7.1-pixel-slate      # Google Pixel Slate (on pixel-slate branch)
-│   └── config-7.1-generic          # Universal x86-64-v2 (on generic-build branch)
+│   ├── config-7.2-march-native     # Laptop (Intel Raptor Lake)
+│   ├── config-7.2-workpc           # AMD Piledriver + Radeon (on workpc branch, once migrated)
+│   ├── config-7.2-pixel-slate      # Google Pixel Slate (on pixel-slate branch, once migrated)
+│   └── config-7.2-generic          # Universal x86-64-v2 (on generic-build branch, once migrated)
 ├── CONTEXT/                         # Project documentation
 │   ├── PROJECT-OVERVIEW.md
 │   ├── BUILD-STATUS.md
@@ -185,7 +198,7 @@ BobZKernel/
     └── rseq-slice-extension/        # RSEQ tests (carried over from 6.19)
 ```
 
-Branch tags `workpc-6.18-archive`, `generic-build-6.18-archive`, `pixel-slate-6.18-archive` preserve each variant's pre-rebase tip from before the 7.1 migration. Historical branches `linux-7.0`, `linux-6.19`, `linux-6.18` remain available for reference.
+Branch tags `workpc-6.18-archive`, `generic-build-6.18-archive`, `pixel-slate-6.18-archive` preserve each variant's pre-rebase tip from before the 7.1 migration. Historical branches `linux-7.1`, `linux-7.0`, `linux-6.19`, `linux-6.18` remain available for reference — each frozen at its confirmed-working tip at the point `master` moved on to the next major version.
 
 ## Troubleshooting
 
