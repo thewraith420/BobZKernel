@@ -24,6 +24,9 @@ if [ "$BRANCH" = "generic-build" ]; then
 elif [ "$BRANCH" = "pixel-slate" ]; then
     CONFIG_FILE="$BASE_DIR/configs/config-7.1-pixel-slate"
     echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate (camera + audio optimized) config${NC}"
+elif [ "$BRANCH" = "picker-kernel" ]; then
+    CONFIG_FILE="$BASE_DIR/configs/config-7.1-picker"
+    echo -e "${BLUE}Branch: picker-kernel - using minimal touch-picker config${NC}"
 else
     CONFIG_FILE="$BASE_DIR/configs/config-7.1-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
@@ -65,7 +68,7 @@ if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ] || [ "$BRANCH" = "
     else
         echo -e "${YELLOW}⚠ march=native not found in config, will apply via KCFLAGS${NC}"
     fi
-elif [ "$BRANCH" = "pixel-slate" ]; then
+elif [ "$BRANCH" = "pixel-slate" ] || [ "$BRANCH" = "picker-kernel" ]; then
     echo -e "${GREEN}✓ march=skylake optimizations will be applied (Pixel Slate - Kaby Lake)${NC}"
 else
     echo -e "${YELLOW}⚠ Using generic x86-64 optimizations on $BRANCH branch${NC}"
@@ -85,7 +88,7 @@ echo -e "${BLUE}Starting kernel build...${NC}"
 echo ""
 
 # Set architecture-specific optimizations
-if [ "$BRANCH" = "pixel-slate" ]; then
+if [ "$BRANCH" = "pixel-slate" ] || [ "$BRANCH" = "picker-kernel" ]; then
     echo -e "${BLUE}Applying Skylake (Kaby Lake) optimizations for Pixel Slate...${NC}"
     KCFLAGS="-march=skylake -mtune=skylake"
 elif [ "$BRANCH" = "master" ] || [ "$BRANCH" = "march-native" ] || [ "$BRANCH" = "linux-7.1" ]; then

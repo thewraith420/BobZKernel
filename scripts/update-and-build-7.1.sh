@@ -216,6 +216,9 @@ if [ "$BRANCH" = "generic-build" ]; then
 elif [ "$BRANCH" = "pixel-slate" ]; then
     CONFIG_SRC="$BASE_DIR/configs/config-7.1-pixel-slate"
     echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate config${NC}"
+elif [ "$BRANCH" = "picker-kernel" ]; then
+    CONFIG_SRC="$BASE_DIR/configs/config-7.1-picker"
+    echo -e "${BLUE}Branch: picker-kernel - using minimal touch-picker config${NC}"
 else
     CONFIG_SRC="$BASE_DIR/configs/config-7.1-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
@@ -441,6 +444,7 @@ echo ""
 # Codegen target for the summary — mirror build-kernel-7.1.sh's branch→march map
 case "$BRANCH" in
     pixel-slate)                    MARCH_DESC="march=skylake (Kaby Lake / Pixel Slate) optimizations" ;;
+    picker-kernel)                  MARCH_DESC="march=skylake (Kaby Lake / Pixel Slate) optimizations, minimal touch-picker config" ;;
     master|march-native|linux-7.1)  MARCH_DESC="march=native optimizations" ;;
     *)                              MARCH_DESC="architecture-specific optimizations ($BRANCH)" ;;
 esac
