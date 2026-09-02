@@ -1,0 +1,109 @@
+i915: disable PSR on Google Nocturne via DMI quirk
+
+The Google Pixel Slate (nocturne, kabylake/ulx) needs i915.enable_psr=0
+on the boot cmdline for visible output on this panel - PSR interacts
+badly with it in a way that has so far only been worked around, not
+root-caused (same class of problem 9200 solved for AUX backlight: the
+panel's actual behavior doesn't match what i915's defaults assume).
+
+Every consumer of this kernel on this hardware needs the param by hand
+today: nocturne-boot-picker's install-picker.sh has to snapshot
+i915.enable_psr=0 out of /proc/cmdline at install time into its own
+frozen GRUB entry, and chromebook-linux-fixer's panel-brightness-dpcd
+fix only covers the AUX backlight half, not this one. Both are
+userspace workarounds for something the kernel already knows how to
+express: i915 has an existing DMI-quirk mechanism
+(intel_quirks.c:intel_dmi_quirks[]) built for exactly "some machines
+need this behavior forced, keyed by DMI match" - already used for two
+other Chromebook boards (Google Lillipup). Add Nocturne as a third
+entry there instead of requiring the cmdline param everywhere.
+
+The PSR enable/disable decision has one clean checkpoint
+(_psr_compute_config() in intel_psr.c), gated today on
+display->params.enable_psr; add the quirk check alongside it. Once a
+kernel carries this, i915.enable_psr=0 becomes redundant but harmless
+(the param and the quirk both disable PSR; neither conflicts with the
+other), and PICKER_CMDLINE / chromebook-fixer's fix become pure
+escape hatches rather than the only way to get a working screen.
+
+Follows 9203's exact DMI match (DMI_SYS_VENDOR "Google" +
+DMI_PRODUCT_NAME "Nocturne").
+
+Note: unlike 9200 (AUX backlight, confirmed live on hardware from DPCD
+register reads), whether i915.enable_dpcd_backlight=2 is similarly
+redundant after 9200 is NOT confirmed - that param is gated by a
+completely separate condition (VBT panel->vbt.backlight.type, or eDP
+revision >= 1.5) that 9200 does not touch, so it may still be required
+independent of this patch. Not addressed here.
+
+Signed-off-by: BobZKernel <bobgenaw420@gmail.com>
+---
+diff --git a/drivers/gpu/drm/i915/display/intel_quirks.h b/drivers/gpu/drm/i915/display/intel_quirks.h
+index 1234567..89abcde 100644
+--- a/drivers/gpu/drm/i915/display/intel_quirks.h
++++ b/drivers/gpu/drm/i915/display/intel_quirks.h
+@@ -22,6 +22,7 @@ enum intel_quirk_id {
+ 	QUIRK_FW_SYNC_LEN,
+ 	QUIRK_EDP_LIMIT_RATE_HBR2,
+ 	QUIRK_DISABLE_EDP_PANEL_REPLAY,
++	QUIRK_DISABLE_PSR,
+ };
+
+ void intel_init_quirks(struct intel_display *display);
+diff --git a/drivers/gpu/drm/i915/display/intel_quirks.c b/drivers/gpu/drm/i915/display/intel_quirks.c
+index 1234567..89abcde 100644
+--- a/drivers/gpu/drm/i915/display/intel_quirks.c
++++ b/drivers/gpu/drm/i915/display/intel_quirks.c
+@@ -94,6 +94,19 @@ static void quirk_disable_edp_panel_replay(struct intel_dp *intel_dp)
+ 	drm_info(display->drm, "Applying disable Panel Replay quirk\n");
+ }
+
++/*
++ * Google Nocturne (Pixel Slate) needs i915.enable_psr=0 on the cmdline for
++ * visible output on this panel - PSR interacts badly with it in a way that
++ * has so far only been worked around, not root-caused. Fold that into a DMI
++ * quirk so every consumer gets it rather than just the one machine someone
++ * configured a cmdline param on by hand.
++ */
++static void quirk_disable_psr(struct intel_display *display)
++{
++	intel_set_quirk(display, QUIRK_DISABLE_PSR);
++	drm_info(display->drm, "Applying disable PSR quirk\n");
++}
++
+ struct intel_quirk {
+ 	int device;
+ 	int subsystem_vendor;
+@@ -182,6 +195,18 @@ static const struct intel_dmi_quirk intel_dmi_quirks[] = {
+ 		},
+ 		.hook = quirk_no_pps_backlight_power_hook,
+ 	},
++	{
++		.dmi_id_list = &(const struct dmi_system_id[]) {
++			{
++				.ident = "Google Nocturne (Pixel Slate)",
++				.matches = {DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Google"),
++					    DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Nocturne"),
++				},
++			},
++			{ }
++		},
++		.hook = quirk_disable_psr,
++	},
+ };
+
+ static struct intel_quirk intel_quirks[] = {
+diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
+index 1234567..89abcde 100644
+--- a/drivers/gpu/drm/i915/display/intel_psr.c
++++ b/drivers/gpu/drm/i915/display/intel_psr.c
+@@ -1746,7 +1746,8 @@ static bool _psr_compute_config(struct intel_dp *intel_dp,
+ 	const struct drm_display_mode *adjusted_mode = &crtc_state->hw.adjusted_mode;
+ 	int entry_setup_frames;
+
+-	if (!CAN_PSR(intel_dp) || !display->params.enable_psr)
++	if (!CAN_PSR(intel_dp) || !display->params.enable_psr ||
++	    intel_has_quirk(display, QUIRK_DISABLE_PSR))
+ 		return false;
+
+ 	/*
