@@ -1,6 +1,8 @@
-# BobZKernel — Optimized Linux 7.1 (Pixel Slate variant)
+# BobZKernel — Optimized Linux 7.2 (Pixel Slate variant, TESTING)
 
-This is the **`pixel-slate`** variant of BobZKernel — Linux 7.1.x built specifically for the **Google Pixel Slate** (codename `nocturne`). Compiled with `-march=skylake -mtune=skylake` to match the Slate's 8th gen Y-series CPU.
+**This is the `pixel-slate-7.2` testing branch — not the daily-driver kernel.** Forked from `pixel-slate` (Linux 7.1.x, still the stable/daily-driver branch) to try Linux 7.2.x on the same hardware. All 14 patches (BORE, RSEQ, platform-profile, acpi-call, dkms-clang, and the 9200-9208 Nocturne-specific fixes) ported and verified to apply clean + compile clean against pristine v7.2.2, but **this branch has not yet been built end-to-end or run on real hardware.** Stay on `pixel-slate` (7.1) until this is proven stable, then it can replace it.
+
+Linux 7.2.x built specifically for the **Google Pixel Slate** (codename `nocturne`). Compiled with `-march=skylake -mtune=skylake` to match the Slate's 8th gen Y-series CPU.
 
 The config carries ~156 driver trimmings against the laptop default (most server/legacy/non-Intel drivers stripped, ChromeOS EC sensors and AVS audio kept). Result: smaller kernel image (~102 MB tarball vs ~117 MB for the laptop variant).
 

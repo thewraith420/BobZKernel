@@ -1,0 +1,73 @@
+ACPI: x86: force GOOG0007 present on Google Nocturne (MrChromebox coreboot regression)
+
+cros_ec_keyb - the driver that turns Chrome EC MKBP button events (volume
+up/down, etc.) into real Linux input events - binds exclusively to ACPI HID
+GOOG0007:
+
+    static const struct acpi_device_id cros_ec_keyb_acpi_match[] = {
+            { "GOOG0007", true },
+    };
+
+On the Google Nocturne (Pixel Slate) running MrChromebox coreboot, GOOG0007's
+_STA now reports 0 (not present) as of a recent firmware update (observed:
+BIOS MrChromebox-2606.1, previously working on MrChromebox-2512.1 with the
+same kernel). Linux's ACPI core respects _STA and never even attempts to
+probe a device it reports as not present, so cros_ec_keyb never loads, no
+volume-button input device is created, and every physical button press is
+silently discarded - no crash, no error, just complete silence.
+
+This is firmware misreporting the device's presence, not a real hardware
+change: the EC itself is demonstrably fine (cros_ec_lpcs GOOG0004 on the same
+board registers and answers commands normally, and the existing
+9201-cros-ec-poll-event-fifo-fallback.patch's DMI-gated poll runs against it
+without error), and GOOG0007's UID (1) and functionality haven't changed -
+only what _STA reports has.
+
+Fix using the ACPI core's existing, purpose-built mechanism for exactly this
+class of bug (drivers/acpi/x86/utils.c, acpi_device_override_status(), already
+used for several other boards with known-bad _STA reporting): force GOOG0007
+to report ACPI_STA_DEFAULT (present/enabled/functional) on this exact board.
+Scoped as narrowly as every other entry in this table - gated on both the
+Kaby Lake-L CPU family (INTEL_KABYLAKE_L, matching the Nocturne's i5-8200Y)
+and an exact DMI match (Google/Nocturne) - so it cannot affect any other
+board, including other GOOG0007-bearing ChromeOS devices whose firmware
+reports _STA correctly.
+
+This is a boot-time ACPI enumeration fix - requires a reboot to take effect,
+cannot be hot-patched into a running kernel. Compile-checked clean against
+7.1.12. Not yet confirmed on real hardware that this restores working volume
+buttons end to end (that GOOG0007 shows present and cros_ec_keyb loads) -
+verify after the next boot before considering this closed.
+
+No firmware downgrade needed or recommended: this is the kind of coreboot/
+ChromeOS-EC firmware quirk this driver family already has a home for, not a
+reason to roll back a coreboot update that likely fixed other things.
+
+Signed-off-by: BobZKernel <bobgenaw420@gmail.com>
+---
+diff --git a/drivers/acpi/x86/utils.c b/drivers/acpi/x86/utils.c
+index 418951639..1c414149d 100644
+--- a/drivers/acpi/x86/utils.c
++++ b/drivers/acpi/x86/utils.c
+@@ -175,6 +175,21 @@ static const struct override_status_id override_status_ids[] = {
+ 		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+ 		DMI_MATCH(DMI_PRODUCT_FAMILY, "YOGATablet2"),
+ 	      }),
++
++	/*
++	 * GOOG0007 (Chrome EC keyboard/button MKBP device, bound by
++	 * cros_ec_keyb) reports _STA = 0 on the Google Nocturne (Pixel
++	 * Slate) since a coreboot firmware update, hiding the device from
++	 * the ACPI core entirely so cros_ec_keyb never probes and no
++	 * volume-button input device is created. The device and its EC
++	 * are demonstrably present and functional (cros_ec_lpcs GOOG0004
++	 * on the same board registers and answers commands normally) -
++	 * this is firmware misreporting _STA, not a real absence.
++	 */
++	PRESENT_ENTRY_HID("GOOG0007", "1", INTEL_KABYLAKE_L, {
++		DMI_MATCH(DMI_SYS_VENDOR, "Google"),
++		DMI_MATCH(DMI_PRODUCT_NAME, "Nocturne"),
++	      }),
+ };
+ 
+ bool acpi_device_override_status(struct acpi_device *adev, unsigned long long *status)
