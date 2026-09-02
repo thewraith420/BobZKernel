@@ -35,9 +35,13 @@ reports _STA correctly.
 
 This is a boot-time ACPI enumeration fix - requires a reboot to take effect,
 cannot be hot-patched into a running kernel. Compile-checked clean against
-7.1.12. Not yet confirmed on real hardware that this restores working volume
-buttons end to end (that GOOG0007 shows present and cros_ec_keyb loads) -
-verify after the next boot before considering this closed.
+7.1.12, and CONFIRMED on real hardware after reboot: GOOG0007 binds
+(/sys/bus/platform/drivers/cros-ec-keyb/GOOG0007:00 exists - note the raw
+ACPI _STA sysfs value does NOT reflect this fix, since status_show() in
+drivers/acpi/device_sysfs.c reads firmware directly and bypasses
+acpi_device_override_status() entirely; check the driver-bind path above,
+not /sys/bus/acpi/devices/GOOG0007:00/status) and volume buttons work
+end to end.
 
 No firmware downgrade needed or recommended: this is the kind of coreboot/
 ChromeOS-EC firmware quirk this driver family already has a home for, not a
