@@ -169,6 +169,13 @@ echo -e "${BLUE}Build log saved to: $LOG_FILE${NC}"
 echo ""
 echo -e "${BLUE}═══ Packaging headers (DKMS support) ═══${NC}"
 if command -v fakeroot &> /dev/null; then
+    # debian/rules doesn't exist until something generates it - `make debian`
+    # (scripts/package/mkdebian) does just that, fast, no compilation. A
+    # fresh source tree has no debian/ at all; skipping this step is exactly
+    # what silently produced "fakeroot: debian/rules: not found" the first
+    # time this ran for real, rather than the manual test that happened to
+    # already have a stale debian/ lying around from an earlier attempt.
+    make LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ debian > /dev/null 2>&1 || true
     if fakeroot debian/rules binary-headers \
         LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ CC="${USE_CCACHE} clang${LLVM_VERSION}" \
         2>&1 | tee "$BASE_DIR/build-7.2-headers-$(date +%Y%m%d-%H%M%S).log"; then
