@@ -123,6 +123,15 @@ make LOCALVERSION= INSTALL_MOD_PATH="$INSTALLER_DIR" modules_install > /dev/null
 echo -e "${BLUE}Compressing modules with zstd...${NC}"
 find "$INSTALLER_DIR/lib/modules/$KERNELRELEASE" -name '*.ko' -exec zstd --rm -q -T0 {} \;
 
+HEADERS_DEB=$(find "$BASE_DIR" -maxdepth 1 -name "linux-headers-${KERNELRELEASE}_*.deb" 2>/dev/null | head -1)
+if [ -n "$HEADERS_DEB" ]; then
+    echo -e "${BLUE}Bundling headers package for DKMS support: $(basename "$HEADERS_DEB")${NC}"
+    cp "$HEADERS_DEB" "$INSTALLER_DIR/"
+else
+    echo -e "${YELLOW}⚠ No matching linux-headers-${KERNELRELEASE}_*.deb found - build-kernel-7.1.sh produces${NC}"
+    echo -e "${YELLOW}  this alongside the kernel. Installer will work fine, just no DKMS support on the target.${NC}"
+fi
+
 echo -e "${BLUE}Writing VERSION manifest...${NC}"
 cat > "$INSTALLER_DIR/VERSION" <<EOF
 Kernel:        $KERNELRELEASE
@@ -254,6 +263,16 @@ install_kernel_files() {
     cp -r "$SCRIPT_DIR/lib/modules/$KERNELRELEASE" /lib/modules/
     depmod -a "$KERNELRELEASE"
     echo -e "${GREEN}✓ Kernel + modules installed${NC}"
+
+    HEADERS_DEB=$(find "$SCRIPT_DIR" -maxdepth 1 -name "linux-headers-*.deb" 2>/dev/null | head -1)
+    if [ -n "$HEADERS_DEB" ]; then
+        echo -e "${BLUE}Installing headers package (DKMS support): $(basename "$HEADERS_DEB")${NC}"
+        if dpkg -i "$HEADERS_DEB"; then
+            echo -e "${GREEN}✓ Headers installed - /lib/modules/$KERNELRELEASE/build now points at a real tree${NC}"
+        else
+            echo -e "${YELLOW}⚠ Headers package failed to install (kernel itself is fine) - check dpkg output above${NC}"
+        fi
+    fi
 }
 
 update_initramfs() {
