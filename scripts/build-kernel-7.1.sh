@@ -151,39 +151,46 @@ echo -e "${BLUE}Build log saved to: $LOG_FILE${NC}"
 # Best-effort: a failure here does not invalidate the kernel that was just
 # built successfully, so it never exits nonzero on its own.
 #
-# Must reuse the exact same LLVM=/CC=/HOSTCC=/HOSTCXX= as the build above -
-# debian/rules' binary-headers target depends on `headers all` (a real,
-# potentially full build, not just a headers_install-style copy), and
-# without matching flags kbuild's .cmd-based staleness tracking sees a
-# different command line and silently recompiles everything with the
-# WRONG toolchain (plain gcc instead of clang/LLVM) - discovered the hard
-# way: it started rebuilding unrelated drivers (drivers/infiniband/hw/hfi1)
-# with gcc against a kernel that was actually built with clang-19. Passing
-# the same flags means the check finds nothing stale and this step is fast.
+# Plain tarball, not a .deb: tried the formal `dpkg`/`debian/rules
+# binary-headers` route first and hit a real, unfixable wall - Debian's
+# packaging tooling requires all-lowercase package names, and this
+# project's own KERNELRELEASE ("...-BobZKernel-...") gets embedded
+# directly in the package name, so mkdebian always fails
+# (dh_listpackages rejects "linux-image-...-BobZKernel-..." outright).
+# Not a flag problem, not fixable without changing KERNELRELEASE itself
+# (used everywhere - module paths, GRUB entries - not worth breaking to
+# satisfy Debian naming policy). A tarball has no such constraint.
 #
-# Invoked directly via `fakeroot debian/rules binary-headers` rather than
-# `make bindeb-pkg`/dpkg-buildpackage, which also insist on libdw-dev (a
-# formal Debian build-dep for the full image+dbg packages this project
-# doesn't need) even for a headers-only build - direct invocation skips
-# that policy gate and just does the actual header-packaging work.
+# What's actually needed for building an out-of-tree module against
+# this kernel isn't every file in the tree - it's the Kbuild
+# infrastructure (Makefile/Kconfig/scripts chain), .config, and
+# Module.symvers. Everything already exists correctly from the build
+# above; this step only selects and archives it, no new compilation.
+# The one thing worth getting right: keep scripts/'s own prebuilt host
+# binaries (modpost, fixdep, kconfig's conf, etc.) since DKMS/module
+# builds need those to already exist, not get rebuilt from source -
+# only exclude *.o OUTSIDE scripts/ (driver/subsystem object files,
+# irrelevant to a module build and the vast majority of the tree's
+# size), plus *.ko/*.ko.zst/vmlinux/bzImage/System.map.
 echo ""
 echo -e "${BLUE}═══ Packaging headers (DKMS support) ═══${NC}"
-if command -v fakeroot &> /dev/null; then
-    if fakeroot debian/rules binary-headers \
-        LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ CC="${USE_CCACHE} clang${LLVM_VERSION}" \
-        2>&1 | tee "$BASE_DIR/build-7.1-headers-$(date +%Y%m%d-%H%M%S).log"; then
-        HEADERS_DEB=$(find "$BASE_DIR/builds" -maxdepth 1 -name "linux-headers-*.deb" -newer "$LOG_FILE" 2>/dev/null | head -1)
-        if [ -n "$HEADERS_DEB" ]; then
-            cp -v "$HEADERS_DEB" "$BASE_DIR/"
-            echo -e "${GREEN}✓ Headers package: $(basename "$HEADERS_DEB")${NC}"
-        else
-            echo -e "${YELLOW}⚠ binary-headers reported success but no linux-headers-*.deb was found${NC}"
-        fi
-    else
-        echo -e "${YELLOW}⚠ Headers packaging failed - kernel itself is still fine, just no DKMS support this build${NC}"
-        echo -e "${YELLOW}  Check the log above. A missing libdw-dev-style dependency should not be the cause${NC}"
-        echo -e "${YELLOW}  (direct debian/rules invocation skips that check) - if it is, something upstream changed.${NC}"
-    fi
+KERNELRELEASE=$(make -s LOCALVERSION= kernelrelease 2>/dev/null)
+HEADERS_TARBALL="$BASE_DIR/linux-headers-$KERNELRELEASE.tar.gz"
+HEADERS_FILELIST=$(mktemp)
+find . -path './.git' -prune -o \
+    \( -name "*.o" ! -path "./scripts/*" \) -prune -o \
+    -name "*.ko" -prune -o \
+    -name "*.ko.zst" -prune -o \
+    -path "./vmlinux" -prune -o \
+    -path "./arch/x86/boot/bzImage" -prune -o \
+    -path "./System.map" -prune -o \
+    -type f -print | sed 's|^\./||' > "$HEADERS_FILELIST"
+if tar czf "$HEADERS_TARBALL" \
+    --transform "s,^,linux-headers-$KERNELRELEASE/," \
+    -T "$HEADERS_FILELIST"; then
+    echo -e "${GREEN}✓ Headers package: $(basename "$HEADERS_TARBALL") ($(du -h "$HEADERS_TARBALL" | cut -f1))${NC}"
 else
-    echo -e "${YELLOW}⚠ fakeroot not installed, skipping headers packaging (sudo apt install fakeroot)${NC}"
+    echo -e "${YELLOW}⚠ Headers packaging failed - kernel itself is still fine, just no DKMS support this build${NC}"
+    rm -f "$HEADERS_TARBALL"
 fi
+rm -f "$HEADERS_FILELIST"

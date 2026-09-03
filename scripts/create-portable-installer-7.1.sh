@@ -123,12 +123,12 @@ make LOCALVERSION= INSTALL_MOD_PATH="$INSTALLER_DIR" modules_install > /dev/null
 echo -e "${BLUE}Compressing modules with zstd...${NC}"
 find "$INSTALLER_DIR/lib/modules/$KERNELRELEASE" -name '*.ko' -exec zstd --rm -q -T0 {} \;
 
-HEADERS_DEB=$(find "$BASE_DIR" -maxdepth 1 -name "linux-headers-${KERNELRELEASE}_*.deb" 2>/dev/null | head -1)
-if [ -n "$HEADERS_DEB" ]; then
-    echo -e "${BLUE}Bundling headers package for DKMS support: $(basename "$HEADERS_DEB")${NC}"
-    cp "$HEADERS_DEB" "$INSTALLER_DIR/"
+HEADERS_TARBALL="$BASE_DIR/linux-headers-${KERNELRELEASE}.tar.gz"
+if [ -f "$HEADERS_TARBALL" ]; then
+    echo -e "${BLUE}Bundling headers tarball for DKMS support: $(basename "$HEADERS_TARBALL")${NC}"
+    cp "$HEADERS_TARBALL" "$INSTALLER_DIR/"
 else
-    echo -e "${YELLOW}⚠ No matching linux-headers-${KERNELRELEASE}_*.deb found - build-kernel-7.1.sh produces${NC}"
+    echo -e "${YELLOW}⚠ No linux-headers-${KERNELRELEASE}.tar.gz found - build-kernel-7.1.sh produces${NC}"
     echo -e "${YELLOW}  this alongside the kernel. Installer will work fine, just no DKMS support on the target.${NC}"
 fi
 
@@ -264,13 +264,19 @@ install_kernel_files() {
     depmod -a "$KERNELRELEASE"
     echo -e "${GREEN}✓ Kernel + modules installed${NC}"
 
-    HEADERS_DEB=$(find "$SCRIPT_DIR" -maxdepth 1 -name "linux-headers-*.deb" 2>/dev/null | head -1)
-    if [ -n "$HEADERS_DEB" ]; then
-        echo -e "${BLUE}Installing headers package (DKMS support): $(basename "$HEADERS_DEB")${NC}"
-        if dpkg -i "$HEADERS_DEB"; then
-            echo -e "${GREEN}✓ Headers installed - /lib/modules/$KERNELRELEASE/build now points at a real tree${NC}"
+    HEADERS_TARBALL=$(find "$SCRIPT_DIR" -maxdepth 1 -name "linux-headers-*.tar.gz" 2>/dev/null | head -1)
+    if [ -n "$HEADERS_TARBALL" ]; then
+        echo -e "${BLUE}Installing headers (DKMS support): $(basename "$HEADERS_TARBALL")${NC}"
+        HEADERS_DEST="/usr/src/linux-headers-$KERNELRELEASE"
+        rm -rf "$HEADERS_DEST"
+        mkdir -p "$HEADERS_DEST"
+        if tar xzf "$HEADERS_TARBALL" -C "$HEADERS_DEST" --strip-components=1; then
+            ln -sfn "$HEADERS_DEST" "/lib/modules/$KERNELRELEASE/build"
+            echo -e "${GREEN}✓ Headers installed to $HEADERS_DEST${NC}"
+            echo -e "${GREEN}✓ /lib/modules/$KERNELRELEASE/build now points at a real tree${NC}"
         else
-            echo -e "${YELLOW}⚠ Headers package failed to install (kernel itself is fine) - check dpkg output above${NC}"
+            echo -e "${YELLOW}⚠ Headers tarball failed to extract (kernel itself is fine)${NC}"
+            rm -rf "$HEADERS_DEST"
         fi
     fi
 }
