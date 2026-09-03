@@ -146,3 +146,44 @@ LOG_FILE="$BASE_DIR/build-7.2-$(date +%Y%m%d-%H%M%S).log"
 echo ""
 echo -e "${GREEN}✓ Kernel build completed successfully!${NC}"
 echo -e "${BLUE}Build log saved to: $LOG_FILE${NC}"
+
+# Package headers for DKMS/out-of-tree module builds on the target machine.
+# Best-effort: a failure here does not invalidate the kernel that was just
+# built successfully, so it never exits nonzero on its own.
+#
+# Must reuse the exact same LLVM=/CC=/HOSTCC=/HOSTCXX= as the build above -
+# debian/rules' binary-headers target depends on `headers all` (a real,
+# potentially full build, not just a headers_install-style copy), and
+# without matching flags kbuild's .cmd-based staleness tracking sees a
+# different command line and silently recompiles everything with the
+# WRONG toolchain (plain gcc instead of clang/LLVM) - discovered the hard
+# way: it started rebuilding unrelated drivers (drivers/infiniband/hw/hfi1)
+# with gcc against a kernel that was actually built with clang-19. Passing
+# the same flags means the check finds nothing stale and this step is fast.
+#
+# Invoked directly via `fakeroot debian/rules binary-headers` rather than
+# `make bindeb-pkg`/dpkg-buildpackage, which also insist on libdw-dev (a
+# formal Debian build-dep for the full image+dbg packages this project
+# doesn't need) even for a headers-only build - direct invocation skips
+# that policy gate and just does the actual header-packaging work.
+echo ""
+echo -e "${BLUE}═══ Packaging headers (DKMS support) ═══${NC}"
+if command -v fakeroot &> /dev/null; then
+    if fakeroot debian/rules binary-headers \
+        LLVM=${LLVM_VERSION} HOSTCC=gcc HOSTCXX=g++ CC="${USE_CCACHE} clang${LLVM_VERSION}" \
+        2>&1 | tee "$BASE_DIR/build-7.2-headers-$(date +%Y%m%d-%H%M%S).log"; then
+        HEADERS_DEB=$(find "$BASE_DIR/builds" -maxdepth 1 -name "linux-headers-*.deb" -newer "$LOG_FILE" 2>/dev/null | head -1)
+        if [ -n "$HEADERS_DEB" ]; then
+            cp -v "$HEADERS_DEB" "$BASE_DIR/"
+            echo -e "${GREEN}✓ Headers package: $(basename "$HEADERS_DEB")${NC}"
+        else
+            echo -e "${YELLOW}⚠ binary-headers reported success but no linux-headers-*.deb was found${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ Headers packaging failed - kernel itself is still fine, just no DKMS support this build${NC}"
+        echo -e "${YELLOW}  Check the log above. A missing libdw-dev-style dependency should not be the cause${NC}"
+        echo -e "${YELLOW}  (direct debian/rules invocation skips that check) - if it is, something upstream changed.${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ fakeroot not installed, skipping headers packaging (sudo apt install fakeroot)${NC}"
+fi
