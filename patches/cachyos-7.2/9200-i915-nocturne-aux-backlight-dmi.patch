@@ -1,0 +1,63 @@
+i915: relax the eDP VESA-backlight AUX_ENABLE_CAP gate on Nocturne only (9200, nightfall-kernel variant)
+
+The Google Pixel Slate (Nocturne) eDP panel sets brightness over the DPCD AUX
+channel (DP_EDP_BACKLIGHT_BRIGHTNESS_AUX_SET_CAP set) but enables the backlight
+via the PWM pin, NOT over AUX (DP_EDP_BACKLIGHT_AUX_ENABLE_CAP is clear).
+
+Kernel <= 6.18 gated intel_dp_aux_supports_vesa_backlight() on
+drm_edp_backlight_supported() alone and drove this panel correctly. 7.x added
+"&& check_if_vesa_backlight_possible()", which hard-requires AUX_ENABLE_CAP; this
+panel lacks it, so i915 falls back to native PWM, which does not physically drive
+the panel: sysfs brightness updates, the screen never changes, dmesg is clean.
+
+DIFFERENCE FROM THE pixel-slate 9200: that patch relaxes the gate for every panel
+and says so itself ("runs only on the Pixel Slate ... Do NOT apply on the other
+variants"). The nightfall-kernel branch is meant to boot on arbitrary PCs, where
+an unconditional relaxation could push a panel that needs PWM onto the AUX path
+and leave it dark. Here the relaxation applies only when DMI says Google/Nocturne;
+every other machine runs upstream's check unchanged. Behaviour on the Slate is
+identical to the pixel-slate patch, and check_if_vesa_backlight_possible() keeps
+its caller, so it no longer needs __maybe_unused.
+
+diff --git a/drivers/gpu/drm/i915/display/intel_dp_aux_backlight.c b/drivers/gpu/drm/i915/display/intel_dp_aux_backlight.c
+index 266e042e0..d2bd82884 100644
+--- a/drivers/gpu/drm/i915/display/intel_dp_aux_backlight.c
++++ b/drivers/gpu/drm/i915/display/intel_dp_aux_backlight.c
+@@ -34,6 +34,8 @@
+  * for some reason.
+  */
+ 
++#include <linux/dmi.h>
++
+ #include <drm/drm_print.h>
+ 
+ #include "intel_backlight.h"
+@@ -637,6 +639,18 @@ check_if_vesa_backlight_possible(struct intel_dp *intel_dp)
+ 	return true;
+ }
+ 
++/*
++ * Google Nocturne (Pixel Slate): the panel sets brightness over the DPCD AUX
++ * channel but enables the backlight via the PWM pin, so DP_EDP_BACKLIGHT_
++ * AUX_ENABLE_CAP is clear and check_if_vesa_backlight_possible() rejects it.
++ * Only this machine gets the relaxed gate; every other panel keeps upstream's.
++ */
++static bool nocturne_aux_backlight_quirk(void)
++{
++	return dmi_match(DMI_SYS_VENDOR, "Google") &&
++	       dmi_match(DMI_PRODUCT_NAME, "Nocturne");
++}
++
+ static bool
+ intel_dp_aux_supports_vesa_backlight(struct intel_connector *connector)
+ {
+@@ -654,7 +668,8 @@ intel_dp_aux_supports_vesa_backlight(struct intel_connector *connector)
+ 	}
+ 
+ 	if (drm_edp_backlight_supported(intel_dp->edp_dpcd) &&
+-	    check_if_vesa_backlight_possible(intel_dp)) {
++	    (nocturne_aux_backlight_quirk() ||
++	     check_if_vesa_backlight_possible(intel_dp))) {
+ 		drm_dbg_kms(display->drm,
+ 			    "[CONNECTOR:%d:%s] AUX Backlight Control Supported!\n",
+ 			    connector->base.base.id, connector->base.name);

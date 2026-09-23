@@ -1,7 +1,7 @@
 #!/bin/bash
 # Complete workflow: Update kernel, apply patches, verify, build, install, and patch DKMS
-# For Linux 7.1 with rseq timeslice extension and NVIDIA compatibility
-# Usage: ./update-and-build-7.1.sh [--skip-update] [--skip-install] [--skip-nvidia] [--yes] [--resume]
+# For Linux 7.2 with rseq timeslice extension and NVIDIA compatibility
+# Usage: ./update-and-build-7.2.sh [--skip-update] [--skip-install] [--skip-nvidia] [--yes] [--resume]
 
 set -e
 set -o pipefail
@@ -13,7 +13,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KERNEL_VERSION="7.1"
+KERNEL_VERSION="7.2"
 SKIP_UPDATE=false
 SKIP_INSTALL=false
 SKIP_NVIDIA=false
@@ -48,7 +48,7 @@ for arg in "$@"; do
 done
 
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   BobZKernel 7.1 Update & Build Workflow               ║${NC}"
+echo -e "${BLUE}║   BobZKernel 7.2 Update & Build Workflow               ║${NC}"
 echo -e "${BLUE}║   Features: RSEQ Timeslice, CachyOS, NVIDIA 595.58.03   ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -97,10 +97,10 @@ if [ "$SKIP_UPDATE" = false ]; then
     fi
 
     # Find the latest stable point release tag.
-    # Pattern v$KV* widens to match both the bare v7.1 release and v7.1.N
+    # Pattern v$KV* widens to match both the bare v7.2 release and v7.2.N
     # point releases; the post-filter restricts to "exactly v$KV" or
-    # "v$KV.something" so v7.10/v7.11 from a future major bump can't sneak in.
-    # sort -V handles "v7.1 < v7.1.1 < v7.1.2" naturally.
+    # "v$KV.something" so v7.20/v7.21 from a future major bump can't sneak in.
+    # sort -V handles "v7.2 < v7.2.1 < v7.2.2" naturally.
     echo -e "${BLUE}Checking for latest v$KERNEL_VERSION.x release...${NC}"
     LATEST_TAG=$(timeout 30 git ls-remote --tags origin "refs/tags/v$KERNEL_VERSION*" 2>/dev/null \
         | grep -v '\^{}\|rc' \
@@ -182,11 +182,11 @@ if [ "$SKIP_PATCHES" = false ]; then
     echo -e "${BLUE}═══ Step 3/9: Applying CachyOS Patches ═══${NC}"
     cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 
-    # Apply CachyOS patches from patches/cachyos-7.1/
+    # Apply CachyOS patches from patches/cachyos-7.2/
     # Distinguish "already applied" (dry-run -R succeeds) from "conflict"
     # (neither forward nor reverse applies cleanly). Treat real conflicts
     # as fatal so we don't silently ship a build with missing features.
-    for patch in "$BASE_DIR/patches/cachyos-7.1/"*.patch; do
+    for patch in "$BASE_DIR/patches/cachyos-7.2/"*.patch; do
         [ -f "$patch" ] || continue
         PATCH_NAME=$(basename "$patch")
         if patch -p1 --dry-run --ignore-whitespace < "$patch" > /dev/null 2>&1; then
@@ -211,17 +211,16 @@ cd "$BASE_DIR/builds/linux-$KERNEL_VERSION"
 # Auto-detect branch and select appropriate config
 BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
 if [ "$BRANCH" = "generic-build" ]; then
-    CONFIG_SRC="$BASE_DIR/configs/config-7.1-generic"
+    CONFIG_SRC="$BASE_DIR/configs/config-7.2-generic"
     echo -e "${BLUE}Branch: generic-build - using generic (x86-64) config${NC}"
-elif [ "$BRANCH" = "pixel-slate" ]; then
-    CONFIG_SRC="$BASE_DIR/configs/config-7.1-pixel-slate"
-    echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate config${NC}"
+elif [ "$BRANCH" = "pixel-slate" ] || [ "$BRANCH" = "pixel-slate-7.2" ]; then
+    CONFIG_SRC="$BASE_DIR/configs/config-7.2-pixel-slate"
+    echo -e "${BLUE}Branch: $BRANCH - using Pixel Slate config${NC}"
 elif [ "$BRANCH" = "nightfall-kernel" ]; then
-    # Moved to the 7.2 line. Refuse instead of falling through to the desktop config.
-    echo -e "${RED}nightfall-kernel builds on 7.2 now (7.1 is EOL) - use scripts/update-and-build-7.2.sh${NC}"
-    exit 1
+    CONFIG_SRC="$BASE_DIR/configs/config-7.2-nightfall"
+    echo -e "${BLUE}Branch: nightfall-kernel - using minimal Nightfall boot-manager config${NC}"
 else
-    CONFIG_SRC="$BASE_DIR/configs/config-7.1-march-native"
+    CONFIG_SRC="$BASE_DIR/configs/config-7.2-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"
 fi
 
@@ -257,9 +256,9 @@ echo ""
 # Step 5: Build kernel
 echo -e "${BLUE}═══ Step 5/9: Building Kernel ═══${NC}"
 cd "$BASE_DIR"
-./scripts/build-kernel-7.1.sh || {
+./scripts/build-kernel-7.2.sh || {
     echo -e "${RED}Kernel build failed!${NC}"
-    echo -e "${YELLOW}Check build-7.1-*.log for errors${NC}"
+    echo -e "${YELLOW}Check build-7.2-*.log for errors${NC}"
     exit 1
 }
 echo -e "${GREEN}✓ Kernel built successfully${NC}"
@@ -281,7 +280,7 @@ if [ "$SKIP_INSTALL" = false ]; then
         case $REPLY in
             1)
                 echo -e "${BLUE}Installing kernel on this system...${NC}"
-                sudo ./scripts/install-kernel-7.1.sh || {
+                sudo ./scripts/install-kernel-7.2.sh || {
                     echo -e "${RED}Kernel installation failed!${NC}"
                     exit 1
                 }
@@ -290,7 +289,7 @@ if [ "$SKIP_INSTALL" = false ]; then
                 ;;
             2)
                 echo -e "${BLUE}Creating portable installer package...${NC}"
-                ./scripts/create-portable-installer-7.1.sh || {
+                ./scripts/create-portable-installer-7.2.sh || {
                     echo -e "${RED}Portable installer creation failed!${NC}"
                     exit 1
                 }
@@ -305,7 +304,7 @@ if [ "$SKIP_INSTALL" = false ]; then
         esac
     else
         # AUTO_YES is true, install locally by default
-        sudo ./scripts/install-kernel-7.1.sh || {
+        sudo ./scripts/install-kernel-7.2.sh || {
             echo -e "${RED}Kernel installation failed!${NC}"
             exit 1
         }
@@ -384,7 +383,7 @@ echo -e "${BLUE}═══ Step 8/9: Updating LenovoLegionLinux DKMS Module ═�
 # Upstream LenovoLegionLinux. We previously carried a local fork at
 # thewraith420/LenovoLegionLinux to add a "balanced-performance" alias
 # for the renamed "custom" profile, but with the kernel-side patch
-# (patches/cachyos-7.1/9100-platform-profile-accept-custom.patch)
+# (patches/cachyos-7.2/9100-platform-profile-accept-custom.patch)
 # TLP can now write "custom" directly to the aggregate sysfs — so the
 # alias is no longer needed and we can use upstream as-is.
 LEGION_FORK="https://github.com/johnfanv2/LenovoLegionLinux.git"
@@ -442,11 +441,12 @@ KERNELRELEASE=$(make -C "$BASE_DIR/builds/linux-$KERNEL_VERSION" -s LOCALVERSION
 
 echo -e "${BLUE}Kernel built: $KERNELRELEASE${NC}"
 echo ""
-# Codegen target for the summary — mirror build-kernel-7.1.sh's branch→march map
+# Codegen target for the summary — mirror build-kernel-7.2.sh's branch→march map
 case "$BRANCH" in
     pixel-slate)                    MARCH_DESC="march=skylake (Kaby Lake / Pixel Slate) optimizations" ;;
-    nightfall-kernel)                MARCH_DESC="march=skylake (Kaby Lake / Pixel Slate) optimizations, minimal Nightfall boot-manager config" ;;
-    master|march-native|linux-7.1)  MARCH_DESC="march=native optimizations" ;;
+    pixel-slate-7.2)                MARCH_DESC="march=skylake (Kaby Lake / Pixel Slate) optimizations, 7.2 testing branch" ;;
+    nightfall-kernel)               MARCH_DESC="march=x86-64-v2 (runs on any PC), minimal Nightfall boot-manager config" ;;
+    master|march-native|linux-7.2)  MARCH_DESC="march=native optimizations" ;;
     *)                              MARCH_DESC="architecture-specific optimizations ($BRANCH)" ;;
 esac
 
@@ -482,13 +482,13 @@ case "${INSTALL_TYPE:-skipped}" in
         ;;
     skipped)
         echo -e "${BLUE}Deployment options:${NC}"
-        echo "  Local install:      sudo ./scripts/install-kernel-7.1.sh"
-        echo "  Portable installer: ./scripts/create-portable-installer-7.1.sh"
+        echo "  Local install:      sudo ./scripts/install-kernel-7.2.sh"
+        echo "  Portable installer: ./scripts/create-portable-installer-7.2.sh"
         ;;
 esac
 
 echo ""
 echo -e "${BLUE}Kernel build artifacts:${NC}"
 echo "  Image: builds/linux-$KERNEL_VERSION/arch/x86/boot/bzImage"
-echo "  Log: build-7.1-*.log (timestamped)"
+echo "  Log: build-7.2-*.log (timestamped)"
 echo ""

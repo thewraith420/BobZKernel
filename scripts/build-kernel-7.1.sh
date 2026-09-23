@@ -25,8 +25,9 @@ elif [ "$BRANCH" = "pixel-slate" ]; then
     CONFIG_FILE="$BASE_DIR/configs/config-7.1-pixel-slate"
     echo -e "${BLUE}Branch: pixel-slate - using Pixel Slate (camera + audio optimized) config${NC}"
 elif [ "$BRANCH" = "nightfall-kernel" ]; then
-    CONFIG_FILE="$BASE_DIR/configs/config-7.1-nightfall"
-    echo -e "${BLUE}Branch: nightfall-kernel - using minimal Nightfall boot-manager config${NC}"
+    # Moved to the 7.2 line. Refuse instead of falling through to the desktop config.
+    echo -e "${RED}nightfall-kernel builds on 7.2 now (7.1 is EOL) - use scripts/build-kernel-7.2.sh${NC}"
+    exit 1
 else
     CONFIG_FILE="$BASE_DIR/configs/config-7.1-march-native"
     echo -e "${BLUE}Branch: $BRANCH - using march=native config${NC}"

@@ -1,0 +1,52 @@
+iommu/vt-d: force an identity domain for the IPU3 ImgU (8086:1919)
+
+The staging ipu3-imgu driver bypasses the DMA API: it backs all buffers with
+alloc_pages()/vb2_dma_sg and programs the ImgU's own internal MMU with raw
+physical addresses (ipu3-mmu.c: page_to_phys(sg_page(s)); ipu3-dmamap.c:
+imgu_mmu_map(mmu, iovaddr, page_to_phys(pages[i]))). The ImgU therefore emits
+physical addresses on the bus and only works when its PCI device is in an
+IOMMU identity/passthrough domain.
+
+On kernels whose default domain is translated (IOMMU_DOMAIN_DMA / DMA-FQ, now
+the default on VT-d) the ImgU's first streaming DMA targets an unmapped IOVA and
+hard-locks the machine (no panic, physical reset required). Observed on the
+Google Pixel Slate ("nocturne"): booting iommu=pt cures it completely and both
+cameras stream through the hardware ISP.
+
+Rather than require the global iommu=pt cmdline (which drops translation for
+every device), scope the passthrough to the ImgU alone via device_def_domain_type
+-- mirroring the existing IDENTMAP_AZALIA per-device identity handling. Every
+other device (the ipu3-cio2 receiver included) keeps its translated domain.
+
+The proper long-term fix is to port ipu3-imgu to the DMA API so it stops
+emitting physical addresses; until then this quirk makes the hardware ISP usable
+without a cmdline token.
+
+Signed-off-by: BobZKernel <bobgenaw420@gmail.com>
+---
+diff --git a/drivers/iommu/intel/iommu.c b/drivers/iommu/intel/iommu.c
+index 849d06dfe..fda519a51 100644
+--- a/drivers/iommu/intel/iommu.c
++++ b/drivers/iommu/intel/iommu.c
+@@ -1401,6 +1401,21 @@ static int device_def_domain_type(struct device *dev)
+ 
+ 		if ((iommu_identity_mapping & IDENTMAP_AZALIA) && IS_AZALIA(pdev))
+ 			return IOMMU_DOMAIN_IDENTITY;
++
++		/*
++		 * The Intel IPU3 ImgU (staging ipu3-imgu driver) programs its
++		 * own internal MMU with raw physical addresses and never uses
++		 * the DMA API, so it only functions in an identity/passthrough
++		 * domain. On kernels that default to a translated domain
++		 * (IOMMU_DOMAIN_DMA/-FQ) its first DMA hits an unmapped IOVA and
++		 * hard-locks the bus. Force an identity domain for just this
++		 * device -- observed on the Google Pixel Slate ("nocturne"),
++		 * where iommu=pt cures the lock; this scopes the passthrough to
++		 * the ImgU alone and leaves every other device translated.
++		 */
++		if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
++		    pdev->device == 0x1919)
++			return IOMMU_DOMAIN_IDENTITY;
+ 	}
+ 
+ 	return 0;

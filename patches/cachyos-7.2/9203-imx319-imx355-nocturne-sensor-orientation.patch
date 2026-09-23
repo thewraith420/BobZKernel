@@ -1,0 +1,153 @@
+media: imx319/imx355: report sensor orientation+rotation on Google Nocturne
+
+The Pixel Slate ("nocturne") describes its two camera sensors (imx319 front,
+imx355 rear) through a native ACPI _DSD graph rather than the SSDB blob that
+ipu-bridge synthesizes from -- and MrChromebox coreboot's _DSD graph carries
+neither an "orientation" nor a "rotation" property. As a result the sensors
+expose no V4L2_CID_CAMERA_ORIENTATION / V4L2_CID_CAMERA_SENSOR_ROTATION, so
+userspace (libcamera) cannot tell how either camera is mounted. Until now that
+was papered over on-device with LIBCAMERA_SENSOR_ROTATION/LOCATION env vars.
+
+Supply the known-good values in-kernel via a DMI quirk keyed on the machine:
+  - imx319 (user/front facing): orientation FRONT, rotation 180 (upside-down)
+  - imx355 (world/back facing):  orientation BACK,  rotation 0   (upright)
+The quirk only fills a field the firmware left UNSET, so it never overrides a
+board that does describe its sensors. imx319 had no fwnode-property parsing at
+all; it now calls v4l2_fwnode_device_parse()/v4l2_ctrl_new_fwnode_properties()
+like imx355 (and most modern sensor drivers) already do, which is a no-op for
+boards without those properties.
+
+This retires the libcamera env-var workaround and is upstreamable.
+
+Signed-off-by: BobZKernel <bobgenaw420@gmail.com>
+---
+diff --git a/drivers/media/i2c/imx319.c b/drivers/media/i2c/imx319.c
+index 953310ef3..0270da638 100644
+--- a/drivers/media/i2c/imx319.c
++++ b/drivers/media/i2c/imx319.c
+@@ -3,6 +3,7 @@
+ 
+ #include <linux/acpi.h>
+ #include <linux/clk.h>
++#include <linux/dmi.h>
+ #include <linux/i2c.h>
+ #include <linux/module.h>
+ #include <linux/pm_runtime.h>
+@@ -2226,10 +2227,43 @@ static const struct v4l2_subdev_internal_ops imx319_internal_ops = {
+ 	.open = imx319_open,
+ };
+ 
++/*
++ * BobZKernel quirk: Google "Nocturne" (Pixel Slate) wires its camera sensors
++ * through a native ACPI _DSD graph (no SSDB, so ipu-bridge is not involved),
++ * but that firmware graph carries neither an "orientation" nor a "rotation"
++ * property. Without them the sensor exposes no V4L2_CID_CAMERA_ORIENTATION /
++ * V4L2_CID_CAMERA_SENSOR_ROTATION, leaving userspace (libcamera) unable to tell
++ * how the sensor is mounted -- previously worked around with the
++ * LIBCAMERA_SENSOR_ROTATION/LOCATION env vars. Supply the known-good values by
++ * DMI match so the kernel reports them itself. imx319 is the user-facing
++ * (front) camera, mounted upside-down (180 degrees).
++ */
++static const struct dmi_system_id imx319_nocturne_dmi[] = {
++	{
++		.matches = {
++			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Google"),
++			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Nocturne"),
++		},
++	},
++	{ }
++};
++
++static void imx319_nocturne_fixup_properties(struct v4l2_fwnode_device_properties *props)
++{
++	if (!dmi_check_system(imx319_nocturne_dmi))
++		return;
++
++	if (props->orientation == V4L2_FWNODE_PROPERTY_UNSET)
++		props->orientation = V4L2_FWNODE_ORIENTATION_FRONT;
++	if (props->rotation == V4L2_FWNODE_PROPERTY_UNSET)
++		props->rotation = 180;
++}
++
+ /* Initialize control handlers */
+ static int imx319_init_controls(struct imx319 *imx319)
+ {
+ 	struct v4l2_ctrl_handler *ctrl_hdlr;
++	struct v4l2_fwnode_device_properties props;
+ 	s64 exposure_max;
+ 	s64 vblank_def;
+ 	s64 vblank_min;
+@@ -2312,6 +2346,17 @@ static int imx319_init_controls(struct imx319 *imx319)
+ 		goto error;
+ 	}
+ 
++	ret = v4l2_fwnode_device_parse(imx319->dev, &props);
++	if (ret)
++		goto error;
++
++	imx319_nocturne_fixup_properties(&props);
++
++	ret = v4l2_ctrl_new_fwnode_properties(ctrl_hdlr, &imx319_ctrl_ops,
++					      &props);
++	if (ret)
++		goto error;
++
+ 	imx319->sd.ctrl_handler = ctrl_hdlr;
+ 
+ 	return 0;
+diff --git a/drivers/media/i2c/imx355.c b/drivers/media/i2c/imx355.c
+index 27a5c212a..23f5d828f 100644
+--- a/drivers/media/i2c/imx355.c
++++ b/drivers/media/i2c/imx355.c
+@@ -4,6 +4,7 @@
+ #include <linux/acpi.h>
+ #include <linux/clk.h>
+ #include <linux/delay.h>
++#include <linux/dmi.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+ #include <linux/module.h>
+@@ -1577,6 +1578,34 @@ static int imx355_power_on(struct device *dev)
+ static DEFINE_RUNTIME_DEV_PM_OPS(imx355_pm_ops, imx355_power_off,
+ 				 imx355_power_on, NULL);
+ 
++/*
++ * BobZKernel quirk: Google "Nocturne" (Pixel Slate) supplies no orientation /
++ * rotation in the sensor's native ACPI _DSD graph (see imx319.c for the full
++ * story). imx355 is the world-facing (back) camera, mounted upright (0 deg);
++ * supply the value by DMI match so libcamera reads it from the kernel instead
++ * of needing the LIBCAMERA_SENSOR_ROTATION/LOCATION env-var workaround.
++ */
++static const struct dmi_system_id imx355_nocturne_dmi[] = {
++	{
++		.matches = {
++			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Google"),
++			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Nocturne"),
++		},
++	},
++	{ }
++};
++
++static void imx355_nocturne_fixup_properties(struct v4l2_fwnode_device_properties *props)
++{
++	if (!dmi_check_system(imx355_nocturne_dmi))
++		return;
++
++	if (props->orientation == V4L2_FWNODE_PROPERTY_UNSET)
++		props->orientation = V4L2_FWNODE_ORIENTATION_BACK;
++	if (props->rotation == V4L2_FWNODE_PROPERTY_UNSET)
++		props->rotation = 0;
++}
++
+ /* Initialize control handlers */
+ static int imx355_init_controls(struct imx355 *imx355)
+ {
+@@ -1668,6 +1697,8 @@ static int imx355_init_controls(struct imx355 *imx355)
+ 	if (ret)
+ 		goto error;
+ 
++	imx355_nocturne_fixup_properties(&props);
++
+ 	ret = v4l2_ctrl_new_fwnode_properties(ctrl_hdlr, &imx355_ctrl_ops,
+ 					      &props);
+ 	if (ret)

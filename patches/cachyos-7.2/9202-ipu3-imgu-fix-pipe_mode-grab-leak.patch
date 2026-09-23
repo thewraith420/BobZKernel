@@ -1,0 +1,59 @@
+ipu3-imgu: release pipe_mode grab and propagate error when CSS start fails
+
+imgu_vb2_start_streaming() grabs the pipe_mode control on every enabled pipe
+(via subdev s_stream(1)), then calls imgu_s_stream(imgu, true) and only sets
+imgu->streaming on success -- but returned 0 unconditionally. When
+imgu_s_stream() fails (observed on Google Pixel Slate / "nocturne" as the CSS
+"failed to start bootloader" -> "failed to start css streaming (-5)"), the grab
+was never released -- imgu_vb2_stop_streaming() ungrabs only when
+imgu->streaming is true -- and the false success hid the error.
+
+The result is a permanently wedged ImgU: pipe_mode stays GRABBED for the whole
+session, every subsequent PipelineHandlerIPU3::configure() fails with EBUSY,
+and -- worst of all -- forcing a stream onto the already-wedged device
+hard-locks the machine (no panic, physical reset required). A clean ImgU that
+merely fails to start CSS only stalls; a re-wedged one is what locks up.
+
+Fix: when imgu_s_stream(true) fails, release the pipe_mode grab on every enabled
+pipe (all were successfully s_stream(1)'d above, so s_stream(0) is a matched off
+and safe against v6.7 call_s_stream() double-call WARNs) and propagate the real
+error to vb2 instead of returning 0. Turns a catastrophic wedge into a
+recoverable streamon failure.
+
+Diagnosed + confirmed at runtime on 7.1.8-BobZKernel-pixel-slate: the grab leak
+was caught in the act via exactly this call path, and a clean (non-wedged) ImgU
+stalls rather than hard-locks.
+
+Signed-off-by: BobZKernel
+
+diff --git a/drivers/staging/media/ipu3/ipu3-v4l2.c b/drivers/staging/media/ipu3/ipu3-v4l2.c
+index 2f6041d34..a6bdcb971 100644
+--- a/drivers/staging/media/ipu3/ipu3-v4l2.c
++++ b/drivers/staging/media/ipu3/ipu3-v4l2.c
+@@ -517,8 +517,26 @@ static int imgu_vb2_start_streaming(struct vb2_queue *vq, unsigned int count)
+ 		imgu->streaming = true;
+ 	mutex_unlock(&imgu->streaming_lock);
+ 
++	/*
++	 * BobZKernel: if imgu_s_stream() failed (e.g. CSS bootloader -EIO), the
++	 * pipe_mode ctrl was already grabbed for every enabled pipe by the
++	 * s_stream(1) loop above, and imgu->streaming stayed false. The original
++	 * code did `return 0` here -- reporting false success while leaking the
++	 * grab -- so the ImgU stayed permanently GRABBED: EBUSY on every later
++	 * configure, and a hard lock if a stream was then forced onto the wedged
++	 * device. Release the grabs and propagate the real error instead. (Every
++	 * enabled pipe was successfully s_stream(1)'d, so s_stream(0) here is a
++	 * matched off and safe against v6.7 call_s_stream() double-call WARNs.)
++	 */
++	if (r < 0)
++		goto fail_stop_subdev_streaming;
++
+ 	return 0;
+ 
++fail_stop_subdev_streaming:
++	for_each_set_bit(pipe, imgu->css.enabled_pipes, IMGU_MAX_PIPE_NUM)
++		v4l2_subdev_call(&imgu->imgu_pipe[pipe].imgu_sd.subdev,
++				 video, s_stream, 0);
+ fail_stop_pipeline:
+ 	video_device_pipeline_stop(&node->vdev);
+ fail_return_bufs:

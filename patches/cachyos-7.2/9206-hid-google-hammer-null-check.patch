@@ -1,0 +1,62 @@
+HID: google-hammer: check for NULL EC device before use in probe
+
+__cbas_ec_probe() fetches the parent device's drvdata and assumes it is
+always a valid struct cros_ec_device *, with no check before using it:
+
+    struct cros_ec_device *ec = dev_get_drvdata(pdev->dev.parent);
+    ...
+    error = cbas_ec_query_base(ec, false, &base_supported);   // ec deref'd here
+
+cbas_ec_query_base() dereferences ec_dev immediately inside
+cros_ec_cmd_xfer_status(). If the platform device this driver binds to
+(ACPI id GOOG000B, the "CBAS" Whiskers base-switch device) has a parent
+whose drvdata was never populated with a real cros_ec_device - which
+happens on at least one real board (Google Nocturne / Pixel Slate under
+third-party coreboot firmware, where the ACPI CBAS device is present as
+a bare identity stub with no _STA/_CRS/_DSD and nothing else sets up the
+parent-child drvdata link depthcharge would normally establish) - this
+is a NULL/garbage-pointer dereference, not a "the base isn't attached"
+condition. It surfaces as a general protection fault during module load
+(inside finit_module(), since platform_driver_register() probes already-
+present matching devices synchronously), with a second fault immediately
+after at mutex_lock, consistent with the crash happening while
+cbas_ec_reglock is still held from cbas_ec_probe().
+
+The driver already has a graceful bail-out one line later for the
+analogous "no base support" case (`if (!base_supported) return -ENXIO;`).
+Do the same thing for a missing EC device instead of trusting it
+unconditionally.
+
+This is a robustness fix independent of any specific firmware: any
+caller where dev_get_drvdata(pdev->dev.parent) legitimately returns NULL
+hits the same crash today.
+
+Confirmed on Google Nocturne (Pixel Slate), MrChromebox coreboot 2512.1,
+BobZKernel 7.1.11-pixel-slate: a one-shot GRUB test (module is normally
+kept out via module_blacklist=hid_google_hammer) showed the unpatched
+module reliably crashes with this GPF on load. Compile-checked clean
+against 7.1.12.
+
+module_blacklist=hid_google_hammer stays in the documented required
+cmdline for now (see README.md) as belt-and-suspenders - this patch has
+not yet been tested WITH the blacklist removed on real hardware, in case
+the parent EC device binds later via deferred probe and that races with
+this path. With the check in place the worst case if it is ever loaded
+is a clean -ENODEV probe failure, never a crash.
+
+Signed-off-by: BobZKernel <bobgenaw420@gmail.com>
+---
+diff --git a/drivers/hid/hid-google-hammer.c b/drivers/hid/hid-google-hammer.c
+index c99c3c0d4..5c34adafd 100644
+--- a/drivers/hid/hid-google-hammer.c
++++ b/drivers/hid/hid-google-hammer.c
+@@ -180,6 +180,9 @@ static int __cbas_ec_probe(struct platform_device *pdev)
+ 	bool base_supported;
+ 	int error;
+ 
++	if (!ec)
++		return -ENODEV;
++
+ 	error = cbas_ec_query_base(ec, false, &base_supported);
+ 	if (error)
+ 		return error;
