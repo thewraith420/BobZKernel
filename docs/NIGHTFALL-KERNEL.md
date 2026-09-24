@@ -82,9 +82,10 @@ last one fails. Run it after every config change and every kernel bump.
   (Alder Lake-P), booted from a USB stick through a GRUB entry. It found its root, drew the
   menu, took input from both the built-in AT keyboard and the laptop's ITE hotkey/EC keyboard,
   and kexec'd into the installed Linux Mint kernel.
-- **Pixel Slate:** reported working by its owner, including the touchscreen, with none of the
-  old i915 workaround options passed (see the options section below). A hands-on report, not a
-  scripted test.
+- **Pixel Slate:** reported working by its owner, including the touchscreen. A hands-on report,
+  not a scripted test. The Slate's installed boot entry still passes the old i915 options (the
+  installer copies them from the running command line), so this run does not show whether they
+  are still needed (see the options section below).
 - **Not tested:** any AMD machine, other Intel generations, NVMe/AHCI as the root disk on real
   hardware, non-UEFI (BIOS) boot on real hardware, and Fedora/openSUSE (BLS) discovery on real
   hardware. The frozen `picker-kernel` / `v7.1.13-picker` stays available as the Slate-only fallback.
@@ -102,12 +103,13 @@ before that turned out to be a wrong-kernel mix-up), so do not carry them forwar
 - `i915.enable_psr=0`: patch 9208 in this kernel applies the same thing automatically, keyed
   on the Nocturne DMI match. The frozen `picker-kernel` never had 9208, which is why it needed
   the option. Nothing to pass on the Slate, and nothing to pass elsewhere.
-- `i915.enable_dpcd_backlight=2`: needed by the frozen 7.1 `picker-kernel` on the Slate. It has
-  been confirmed not needed with this kernel by the Slate's owner, but **why is not yet
-  explained**. In this kernel's i915, AUTO mode only tries the VESA backlight path if the
-  panel's VBT says so or the panel reports eDP 1.5+ (see `intel_dp_aux_backlight.c`), and
-  nothing here changes that for the Slate. The likely cause is a firmware/VBT change, not the
-  kernel. Keep the option handy for the Slate, and do not add it to anything else.
+- `i915.enable_dpcd_backlight=2`: needed by the frozen 7.1 `picker-kernel` on the Slate. **Whether
+  it is still needed with this kernel is untested**: the Slate's installed entry passes it, and
+  the only claim of the panel lighting without it (a boot from a USB stick) is second-hand and
+  unverified. Nothing in this kernel's patches removes the need: in its i915, AUTO mode only tries
+  the VESA backlight path if the panel's VBT says so or the panel reports eDP 1.5+ (see
+  `intel_dp_aux_backlight.c`). Keep the option on the Slate, and do not add it to anything else.
+  Confirming it takes a one-off boot with the option removed and `drm.debug=0x4` added.
 
 ## Known limits
 
