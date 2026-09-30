@@ -1,14 +1,25 @@
-i915: relax the eDP VESA-backlight AUX_ENABLE_CAP gate on Nocturne only (9200, nightfall-kernel variant)
+i915: relax the eDP VESA-backlight capability gate on Nocturne only (9200, nightfall-kernel variant)
 
 The Google Pixel Slate (Nocturne) eDP panel sets brightness over the DPCD AUX
-channel (DP_EDP_BACKLIGHT_BRIGHTNESS_AUX_SET_CAP set) but enables the backlight
-via the PWM pin, NOT over AUX (DP_EDP_BACKLIGHT_AUX_ENABLE_CAP is clear).
+channel but fails check_if_vesa_backlight_possible() in the current tree, so
+i915 falls back to native PWM, which does not physically drive the panel:
+sysfs brightness updates, the screen never changes, dmesg is clean.
 
-Kernel <= 6.18 gated intel_dp_aux_supports_vesa_backlight() on
-drm_edp_backlight_supported() alone and drove this panel correctly. 7.x added
-"&& check_if_vesa_backlight_possible()", which hard-requires AUX_ENABLE_CAP; this
-panel lacks it, so i915 falls back to native PWM, which does not physically drive
-the panel: sysfs brightness updates, the screen never changes, dmesg is clean.
+CORRECTION (found by a peer session auditing this patch, 2026-09-30): earlier
+revisions of this commit message and the code comment below named
+DP_EDP_BACKLIGHT_AUX_ENABLE_CAP as the bit that fails. That's wrong -
+check_if_vesa_backlight_possible() in drivers/gpu/drm/i915/display/
+intel_dp_aux_backlight.c does not reference AUX_ENABLE_CAP at all (that bit is
+only read in drm_dp_helper.c, to choose aux_enable vs pwm_funcs for how the
+backlight gets *enabled* - i915 already handles aux_enable == false via
+pwm_funcs, so AUX-brightness + PWM-enable is a supported combination upstream).
+The function actually rejects on one of three DPCD reads: (a) edp_dpcd[2]
+lacking DP_EDP_BACKLIGHT_BRIGHTNESS_AUX_SET_CAP, (b) PWMGEN_BIT_COUNT_CAP_MIN
+< 1, or (c) PWMGEN_BIT_COUNT_CAP_MAX < CAP_MIN. Which of the three actually
+fails on this panel is UNCONFIRMED - needs a DPCD dump of 0x700-0x703 and
+0x724/0x725 on real hardware. Kernel <= 6.18 gated
+intel_dp_aux_supports_vesa_backlight() on drm_edp_backlight_supported() alone;
+7.x added the check_if_vesa_backlight_possible() call that this panel fails.
 
 DIFFERENCE FROM THE pixel-slate 9200: that patch relaxes the gate for every panel
 and says so itself ("runs only on the Pixel Slate ... Do NOT apply on the other
@@ -38,8 +49,8 @@ index 266e042e0..d2bd82884 100644
  
 +/*
 + * Google Nocturne (Pixel Slate): the panel sets brightness over the DPCD AUX
-+ * channel but enables the backlight via the PWM pin, so DP_EDP_BACKLIGHT_
-+ * AUX_ENABLE_CAP is clear and check_if_vesa_backlight_possible() rejects it.
++ * channel but fails check_if_vesa_backlight_possible()'s DPCD checks (exactly
++ * which of its three conditions is unconfirmed - see the commit message).
 + * Only this machine gets the relaxed gate; every other panel keeps upstream's.
 + */
 +static bool nocturne_aux_backlight_quirk(void)
