@@ -103,13 +103,20 @@ before that turned out to be a wrong-kernel mix-up), so do not carry them forwar
 - `i915.enable_psr=0`: patch 9208 in this kernel applies the same thing automatically, keyed
   on the Nocturne DMI match. The frozen `picker-kernel` never had 9208, which is why it needed
   the option. Nothing to pass on the Slate, and nothing to pass elsewhere.
-- `i915.enable_dpcd_backlight=2`: needed by the frozen 7.1 `picker-kernel` on the Slate. **Whether
-  it is still needed with this kernel is untested**: the Slate's installed entry passes it, and
-  the only claim of the panel lighting without it (a boot from a USB stick) is second-hand and
-  unverified. Nothing in this kernel's patches removes the need: in its i915, AUTO mode only tries
-  the VESA backlight path if the panel's VBT says so or the panel reports eDP 1.5+ (see
-  `intel_dp_aux_backlight.c`). Keep the option on the Slate, and do not add it to anything else.
-  Confirming it takes a one-off boot with the option removed and `drm.debug=0x4` added.
+- `i915.enable_dpcd_backlight=2`: needed by the frozen 7.1 `picker-kernel` on the Slate. **Confirmed
+  redundant on this kernel + current Slate firmware (MrChromebox 2609.0)**, read live off the
+  hardware rather than inferred: the Slate's own VBT (BDB 221) selects panel_type 15, whose
+  backlight method is `VESA_EDP_AUX_INTERFACE`. In AUTO mode (the default, i.e. no flag at all)
+  i915's `intel_dp_aux_supports_vesa_backlight()` reads exactly that VBT field and already tries
+  the VESA path - `=2` (force VESA) reaches the identical code on this panel, so the flag was
+  never selecting a different path here. **This is independent of patch 9200**: 9200 only matters
+  *after* VESA has been selected as the path to try, bypassing `check_if_vesa_backlight_possible()`'s
+  DPCD capability check - it says nothing about whether VESA gets tried in the first place, which
+  is what this flag used to be assumed to control. 9200 is still required regardless of this flag.
+  Caveat: this depends on the VBT data a specific coreboot build ships, which gets reflashed
+  (Bob runs a MrChromebox prerelease) - a different firmware version could set a different
+  default and make the flag necessary again. Don't assume it carries forward across a reflash
+  without rechecking.
 
 ## Known limits
 
