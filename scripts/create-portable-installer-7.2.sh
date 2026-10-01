@@ -141,6 +141,37 @@ else
     echo -e "${YELLOW}  this alongside the kernel. Installer will work fine, just no DKMS support on the target.${NC}"
 fi
 
+# Build the local-patch list straight from whatever's actually in
+# patches/cachyos-7.2/ for THIS branch, instead of a hand-maintained list -
+# a hand-maintained one is exactly what went stale before (the manifest kept
+# listing only 9003/9100 long after pixel-slate grew 9200-9208). Each
+# patch's one-line description comes from the patch file itself:
+#   - git-format-patch style (From <hash> ...): pull its Subject: line
+#   - a bare diff with no header line (9003 predates this convention):
+#     fall back to the filename
+#   - everything else (our own 9xxx patches): first line is already a
+#     one-line commit-style summary, use it as-is
+PATCH_LIST=""
+for p in "$BASE_DIR/patches/cachyos-$KERNEL_VERSION/"*.patch; do
+    [ -f "$p" ] || continue
+    pname=$(basename "$p" .patch)
+    first_line=$(head -1 "$p")
+    case "$first_line" in
+        From\ *)
+            desc=$(grep -m1 "^Subject: " "$p" | sed -e 's/^Subject: \[PATCH[^]]*\] *//' -e 's/^Subject: *//')
+            [ -z "$desc" ] && desc="$pname"
+            ;;
+        diff\ --git*)
+            desc="$pname"
+            ;;
+        *)
+            desc="$first_line"
+            ;;
+    esac
+    PATCH_LIST="${PATCH_LIST}- **${pname}**: ${desc}
+"
+done
+
 echo -e "${BLUE}Writing VERSION manifest...${NC}"
 cat > "$INSTALLER_DIR/VERSION" <<EOF
 Kernel:        $KERNELRELEASE
@@ -156,11 +187,10 @@ Features:
 - $LTO_STATUS
 - BBRv3 TCP congestion control (default)
 - RSEQ slice extension (CONFIG_RSEQ_SLICE_EXTENSION=y, mainline)
-- 9003-rseq-latency-histogram patch (abort latency stats)
-- 9100-platform-profile-accept-custom patch (TLP can write 'custom' to
-  /sys/firmware/acpi/platform_profile on Lenovo Legion/LOQ hardware)
 - RANDSTRUCT Full
 
+Local patches carried on this branch (patches/cachyos-$KERNEL_VERSION/):
+$PATCH_LIST
 Note: $ARCH_NOTE
 EOF
 
@@ -389,33 +419,40 @@ UNINSTALL_SCRIPT
 chmod +x "$INSTALLER_DIR/uninstall.sh"
 
 echo -e "${BLUE}Writing README.md...${NC}"
+if [ "$EXPECTED_VENDOR" = "any" ]; then
+    COMPAT_TABLE="| CPU | Works? |
+|---|---|
+| $EXPECTED_DESCRIPTION | Yes |"
+else
+    COMPAT_TABLE="| CPU | Works? |
+|---|---|
+| $EXPECTED_DESCRIPTION | Yes |
+| Anything else | No — build from source |"
+fi
+
 cat > "$INSTALLER_DIR/README.md" <<README
 # BobZKernel $KERNELRELEASE — Portable Installer
 
-Pre-built Linux $KERNEL_VERSION kernel for Lenovo Legion / LOQ-class hardware,
-tuned for Intel Raptor Lake (13th Gen). See the project at
-https://github.com/thewraith420/BobZKernel for source and build scripts.
+Pre-built Linux $KERNEL_VERSION kernel, branch \`$BRANCH\`. $ARCH_NOTE
+See the project at https://github.com/thewraith420/BobZKernel for source and
+build scripts.
 
 ## Compatibility
 
-This binary was built with **\`march=native\`** on a 13th Gen Raptor Lake CPU.
-That means GCC/Clang were free to emit instructions specific to that
-microarchitecture. As a practical matter:
+This binary was built with **\`$MARCH_TARGET\`** ($MARCH_OPTIMIZATION). That
+means GCC/Clang were free to emit instructions specific to that target. As a
+practical matter:
 
-| CPU                             | Works? |
-|---------------------------------|--------|
-| Intel 12th/13th/14th Gen        | Yes    |
-| Intel 11th Gen (Tiger Lake)     | Probably (test on a non-critical box first) |
-| Intel 10th Gen and older        | No — build from source |
-| AMD (any)                       | No — build from source |
+$COMPAT_TABLE
 
-If your CPU isn't a recent Intel, **don't install this**. Build from source
-instead — the build pipeline takes care of march=native auto-detection:
+If your CPU isn't in that list, **don't install this**. Build from source
+instead — the build pipeline picks the right codegen per branch automatically:
 
 \`\`\`bash
 git clone https://github.com/thewraith420/BobZKernel
 cd BobZKernel
-./scripts/update-and-build-7.2.sh
+git checkout $BRANCH
+./scripts/update-and-build-$KERNEL_VERSION.sh
 \`\`\`
 
 ## What's in this kernel
@@ -425,11 +462,11 @@ cd BobZKernel
 - **$MARCH_OPTIMIZATION**
 - **BBRv3** TCP congestion control (default)
 - **RSEQ slice extension** (mainline; observability at \`/sys/kernel/debug/rseq/stats\`)
-- **9003-rseq-latency-histogram** patch — abort latency stats
-- **9100-platform-profile-accept-custom** patch — lets TLP write \`custom\` to
-  \`/sys/firmware/acpi/platform_profile\` on Lenovo Legion / LOQ hardware
 - **RANDSTRUCT Full** — kernel struct layout randomization (security)
 
+### Local patches carried on this branch (\`patches/cachyos-$KERNEL_VERSION/\`)
+
+$PATCH_LIST
 See \`VERSION\` for the exact commit, build host, and feature manifest.
 
 ## Install
