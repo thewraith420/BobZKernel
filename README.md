@@ -6,9 +6,9 @@ Custom optimized Linux kernel **7.2.x** with the BORE scheduler, RSEQ abort late
 
 | Variant | Branch | Target hardware | Release |
 |---|---|---|---|
-| **Default (laptop)** | `master` / `linux-7.2` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | [v7.2.2](https://github.com/thewraith420/BobZKernel/releases/tag/v7.2.2) |
+| **Default (laptop)** | `master` / `linux-7.2` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | [v7.2.8](https://github.com/thewraith420/BobZKernel/releases/tag/v7.2.8) |
 | **workpc** | `workpc` | AMD FX-series Piledriver desktop (AM3+ with Radeon HD7000-class iGPU) | [v7.1.0-workpc](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-workpc) |
-| **Pixel Slate** | `pixel-slate` | Google Pixel Slate (codename `nocturne`, Skylake/Kaby Lake) | [v7.1.0-pixel-slate](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-pixel-slate) |
+| **Pixel Slate** | `pixel-slate-7.2` | Google Pixel Slate (codename `nocturne`, Skylake/Kaby Lake) | [v7.2.6-pixel-slate](https://github.com/thewraith420/BobZKernel/releases/tag/v7.2.6-pixel-slate) |
 | **Generic x86-64-v2** | `generic-build` | Universal modern x86-64 (Intel Nehalem 2008+, AMD Bulldozer 2011+) | [v7.1.1-generic](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.1-generic) |
 
 Each variant uses the same core patch stack and feature set, but differs in CPU codegen target (`-march=native` / `-march=bdver2` / `-march=skylake` / `-march=x86-64-v2`) and driver subset (Pixel Slate keeps ChromeOS EC drivers + AVS audio; workpc keeps Radeon built-in for early KMS; etc.). Pick the variant that matches your hardware.
@@ -123,7 +123,7 @@ After reboot, expected state on the laptop variant:
 
 ```bash
 uname -r
-# 7.2.2-BobZKernel (or current point release)
+# 7.2.8-BobZKernel (or current point release)
 
 # LTO + native CPU
 grep -E "^CONFIG_LTO_CLANG_FULL|^CONFIG_X86_NATIVE_CPU" /boot/config-$(uname -r)
@@ -151,13 +151,15 @@ In `patches/cachyos-7.2/`:
 - `9003-rseq-latency-histogram.patch` — abort latency histogram (5 bins + avg_ns).
 - `0001-acpi-call.patch`, `dkms-clang.patch` — CachyOS support patches.
 - `9100-platform-profile-accept-custom.patch` — lets the aggregate `/sys/firmware/acpi/platform_profile` accept writes of `custom` (needed so TLP can drive the legion-laptop "custom" profile directly).
+- `9101-ideapad-allow-fast-plus-conservation-charge.patch` — `ideapad-laptop` treated the EC reporting Rapid Charge + Conservation Mode together as an error (`-EINVAL` on every read of `charge_types`, roughly every 5s), but that combination is a real, intentional state on this hardware (Conservation caps the charge ceiling, Rapid Charge governs how fast it gets there below that cap). Drops the error path so `charge_types` reads a sensible value instead of bare I/O errors.
 
-**Going 7.1 → 7.2: nothing dropped, nothing refreshed.** All five patches carried
-forward byte-for-byte and dry-run verified exact (zero fuzz/offset) against
-pristine `v7.2.2` before this release — including `0001-bore.patch`, which
+**Going 7.1 → 7.2: nothing dropped, nothing refreshed** (beyond 9101, added since). All
+patches carried forward byte-for-byte and dry-run verified exact (zero fuzz/offset) against
+pristine `v7.2.2` before that release — including `0001-bore.patch`, which
 needed a hand refresh at the 7.1.5 point release. Checked upstream first, as
 always: neither CachyOS's `kernel-patches` repo nor firelzrd/bore-scheduler has
-published anything for the 7.x line.
+published anything for the 7.x line. Re-verified clean (zero conflicts) against
+`v7.2.8` for this release.
 
 **Dropped going 7.0 → 7.1:**
 - `0001-rt-i915.patch` — PREEMPT_RT compatibility shim. CachyOS dropped it for 7.1; we don't build PREEMPT_RT, so the IS_ENABLED guards compile-time-evaluate to true. The patch was a no-op for our config.
