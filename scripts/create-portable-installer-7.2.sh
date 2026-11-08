@@ -524,7 +524,13 @@ README
 
 echo -e "${BLUE}Creating tarball: $PACKAGE_NAME${NC}"
 cd "$BASE_DIR"
-tar -czf "$PACKAGE_NAME" -C "$INSTALLER_DIR" .
+# --owner/--group/--mode: whoever built this did so as a regular user, so every
+# entry (including ./, ./boot/, ./lib/) would otherwise record that user's uid/gid
+# and 775-style perms. A root-run `tar x` restores archived ownership by default,
+# so an installer tarball extracted straight to / (instead of the documented
+# extract-then-cp flow) would re-own /boot, /lib, /usr/lib (via the /lib symlink)
+# to that user. Force root:root, no group/other write, regardless of who built it.
+tar --owner=0 --group=0 --mode=go-w -czf "$PACKAGE_NAME" -C "$INSTALLER_DIR" .
 
 PACKAGE_SIZE=$(du -h "$PACKAGE_NAME" | cut -f1)
 PACKAGE_SHA=$(sha256sum "$PACKAGE_NAME" | awk '{print $1}')
