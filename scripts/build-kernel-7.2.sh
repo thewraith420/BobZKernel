@@ -202,7 +202,7 @@ find . -path './.git' -prune -o \
     -path "./arch/x86/boot/bzImage" -prune -o \
     -path "./System.map" -prune -o \
     -type f -print | sed 's|^\./||' > "$HEADERS_FILELIST"
-if tar czf "$HEADERS_TARBALL" \
+if tar --owner=0 --group=0 --mode=go-w -czf "$HEADERS_TARBALL" \
     --transform "s,^,linux-headers-$KERNELRELEASE/," \
     -T "$HEADERS_FILELIST"; then
     echo -e "${GREEN}✓ Headers package: $(basename "$HEADERS_TARBALL") ($(du -h "$HEADERS_TARBALL" | cut -f1))${NC}"
