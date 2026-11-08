@@ -29,9 +29,14 @@ fi
 BRANCH=$(git -C "$BASE_DIR" branch --show-current 2>/dev/null || echo "master")
 
 cd "$KERNEL_DIR"
-# LOCALVERSION= keeps the resulting kernelrelease consistent with what was
-# built (no spurious -dirty from setlocalversion looking at the patched tree).
-KERNELRELEASE=$(make -s LOCALVERSION= kernelrelease 2>/dev/null)
+# Read the real, cached release string (include/config/kernel.release) rather than
+# asking `make kernelrelease` with an override - that override suppresses the -dirty
+# suffix on ITS OWN echo, but the real vmlinux and modules_install both still use the
+# cached, dirty-aware value (the tree is dirty on every build, since patches are
+# applied with plain `patch`, not committed). Passing LOCALVERSION= here used to name
+# vmlinuz/config without -dirty while modules_install still wrote to the -dirty
+# directory - an internally inconsistent tarball. See kernel.release directly instead.
+KERNELRELEASE=$(cat "$KERNEL_DIR/include/config/kernel.release" 2>/dev/null)
 if [ -z "$KERNELRELEASE" ]; then
     echo -e "${RED}Error: could not read kernelrelease from $KERNEL_DIR${NC}"
     exit 1
@@ -125,7 +130,7 @@ cp "$KERNEL_DIR/.config" "$INSTALLER_DIR/boot/config-$KERNELRELEASE"
 
 echo -e "${BLUE}Installing modules into staging tree (this takes a minute)...${NC}"
 cd "$KERNEL_DIR"
-make LOCALVERSION= INSTALL_MOD_PATH="$INSTALLER_DIR" modules_install > /dev/null
+make INSTALL_MOD_PATH="$INSTALLER_DIR" modules_install > /dev/null
 
 echo -e "${BLUE}Compressing modules with zstd...${NC}"
 find "$INSTALLER_DIR/lib/modules/$KERNELRELEASE" -name '*.ko' -exec zstd --rm -q -T0 {} \;
