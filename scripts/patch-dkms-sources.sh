@@ -32,6 +32,34 @@ for NVIDIA_SRC in /usr/src/nvidia-*; do
         else
             echo -e "${GREEN}  ✓ No patches needed for $NVIDIA_VERSION${NC}"
         fi
+
+        # Fix dmem_cgroup_register_region() API change (kernel 7.3 takes a
+        # struct dmem_cgroup_init instead of a bare size). Version-guarded,
+        # so the same source still builds for older kernels.
+        OS_IFACE="$NVIDIA_SRC/kernel-open/nvidia/os-interface.c"
+        # Exact old form only: 620+ ships its own fix with a similar-looking line.
+        if [ -f "$OS_IFACE" ] && grep -qxF "    void *region = dmem_cgroup_register_region(size, name);" "$OS_IFACE"; then
+            python3 - "$OS_IFACE" << 'PYEOF'
+import sys
+f = sys.argv[1]
+with open(f) as fh:
+    content = fh.read()
+old = "    void *region = dmem_cgroup_register_region(size, name);\n"
+new = """#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
+    struct dmem_cgroup_init init = { .size = size };
+    void *region = dmem_cgroup_register_region(&init, "%s", name);
+#else
+    void *region = dmem_cgroup_register_region(size, "%s", name);
+#endif
+"""
+if content.count(old) != 1:
+    sys.exit("unexpected os-interface.c layout, not patching")
+with open(f, "w") as fh:
+    fh.write(content.replace(old, new))
+PYEOF
+            echo -e "${GREEN}  ✓ Fixed dmem_cgroup_register_region() API (7.3) in $NVIDIA_VERSION${NC}"
+            NVIDIA_PATCHED=true
+        fi
     fi
 done
 
