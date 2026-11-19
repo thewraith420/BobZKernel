@@ -1,4 +1,4 @@
-cros_ec: poll the EC event FIFO when IRQ/notify never fires (Pixel Slate fix)
+cros_ec: poll the EC event FIFO when IRQ/notify never fires (per-device)
 
 On the Google Pixel Slate (nocturne, x86 LPC Chrome EC) the EC never
 delivers MKBP events to the AP. Confirmed on-device by three independent
@@ -23,30 +23,36 @@ ever drains the FIFO after boot. The result: volume buttons, the sensor FIFO
 The synchronous EC command path is unaffected -- cros_ec_get_next_event()
 drains the FIFO fine on demand, which is exactly what the existing boot-time
 and resume-time drains rely on. This patch adds an optional periodic drain
-(the same cros_ec_handle_event() loop the IRQ thread runs) as a fallback for
-such boards.
+as a fallback for boards (or specific EC instances on a board) whose async
+delivery is dead.
 
-Design:
-  - Off by default. A module param, cros_ec.ec_event_poll_ms, controls it:
-    -1 = auto (enable per a DMI allow-list; currently Google Nocturne),
-     0 = off, >0 = poll period in milliseconds (default 40 when auto).
-  - Runs from a delayed_work (process context) because cros_ec_get_next_event()
-    issues a sleeping EC command; a timer/softirq could not.
-  - Paused across suspend (cancel in the suspend-late disable path) and
-    resumed in the resume-early enable path, so no EC commands are issued
-    while the EC is down.
-  - Zero effect on boards where the async path works: the work is initialised
-    but never scheduled unless the board is on the allow-list (or the param is
-    set), and the extra struct field is inert otherwise.
+REVISION (per-device, not board-wide): the original version of this patch
+decided whether to poll ONCE per board via a DMI match, applied uniformly to
+every cros_ec_device instance. The Pixel Slate exposes more than one EC --
+the main EC over LPC (the one actually affected above) and a separate FPMCU
+over SPI, whose own IRQ has always worked fine. The board-wide flag polled
+the FPMCU too, purely because it shares a DMI match with the LPC EC, which
+is pure overhead on an EC that was never broken. It also meant a firmware
+fix restoring the LPC EC's own IRQ (MrChromebox 2609.0 does this on this
+board) couldn't make the LPC EC stop polling either, since the decision
+never looked at that EC's own IRQ state in the first place.
 
-If the async EC event delivery is ever root-caused and fixed at the
-firmware/ACPI level, set cros_ec.ec_event_poll_ms=0 to disable this with no
-rebuild.
+Fixed by deciding per ec_dev instead: in auto mode (the default), poll THIS
+EC only if the board is DMI-matched AND this EC's own transport ended up
+with no usable IRQ (ec_dev->irq <= 0, already known by the time
+cros_ec_register() reaches this decision). An EC that already has a working
+IRQ -- the FPMCU always, and now the LPC EC too on fixed firmware -- is left
+alone regardless of what any other EC on the same board needs. The module
+param (ec_event_poll_ms) is still a hard override in either direction,
+applied to every EC instance, for anyone who needs to force it.
 
-Signed-off-by: BobZKernel
+Not yet hardware-tested with this revision; compile-verified clean against
+v7.2.7. Prior board-wide version was hardware-confirmed (buttons/auto-rotate
+restored) on 7.1.11-BobZKernel-pixel-slate.
 
+Signed-off-by: BobZKernel <bobgenaw420@gmail.com>
+---
 diff --git a/drivers/platform/chrome/cros_ec.c b/drivers/platform/chrome/cros_ec.c
-index 1da79e3d2..b35271ff9 100644
 --- a/drivers/platform/chrome/cros_ec.c
 +++ b/drivers/platform/chrome/cros_ec.c
 @@ -10,6 +10,7 @@
@@ -65,34 +71,42 @@ index 1da79e3d2..b35271ff9 100644
  
  #include "cros_ec.h"
  
-@@ -150,6 +152,67 @@ irqreturn_t cros_ec_irq_thread(int irq, void *data)
+@@ -150,6 +152,88 @@
  }
  EXPORT_SYMBOL(cros_ec_irq_thread);
  
 +/*
 + * BobZKernel: EC event-FIFO polling fallback.
 + *
-+ * On some boards (confirmed: Google Nocturne / Pixel Slate) the EC never
-+ * delivers MKBP events to the AP: the hardware IRQ (chromeos-ec) fires once at
-+ * boot and never again, and no ACPI notify reaches the driver either. The EC's
-+ * outgoing event FIFO then fills and overflows while nothing drains it, so
-+ * volume buttons, the sensor FIFO (auto-rotate), and lid-angle all go silent.
-+ * The synchronous command path is unaffected -- cros_ec_get_next_event() drains
++ * On some boards (confirmed: Google Nocturne / Pixel Slate) an EC's event
++ * IRQ/notify never fires: the hardware IRQ fires once at boot and never
++ * again, and no ACPI notify reaches the driver either. That EC's outgoing
++ * event FIFO then fills and overflows while nothing drains it, so volume
++ * buttons, the sensor FIFO (auto-rotate), and lid-angle all go silent. The
++ * synchronous command path is unaffected -- cros_ec_get_next_event() drains
 + * fine on demand -- so we just call the same drain periodically as a fallback.
 + *
-+ * Disabled by default; auto-enabled per DMI, overridable via the module param.
-+ * ec_event_poll_ms: <0 = auto (DMI), 0 = off, >0 = poll period in ms.
++ * Decided PER cros_ec_device, not per board: a board can expose more than one
++ * EC (Nocturne has both the main EC over LPC and an FPMCU over SPI), and a
++ * firmware fix can restore one transport's IRQ while another's is still dead
++ * -- or always worked fine, e.g. the FPMCU's IRQ has never been the broken
++ * one here, so it was needlessly polled too under a single board-wide flag.
++ *
++ * Disabled by default; auto-enabled per-device when (DMI-matched board) AND
++ * (this ec_dev ended up with no usable IRQ). Overridable via the module
++ * param, which still applies module-wide to every ec_dev instance.
++ * ec_event_poll_ms: <0 = auto (per-device), 0 = off, >0 = poll period in ms.
 + */
 +#define CROS_EC_EVENT_POLL_DEFAULT_MS	40
 +
 +static int ec_event_poll_ms = -1;
 +module_param(ec_event_poll_ms, int, 0644);
 +MODULE_PARM_DESC(ec_event_poll_ms,
-+	"Poll the EC event FIFO every N ms as a fallback when the EC event IRQ/notify never fires (-1=auto per DMI, 0=off, >0=period ms)");
++	"Poll the EC event FIFO every N ms as a fallback when an EC's event IRQ/notify never fires (-1=auto per-device, 0=off, >0=force on for every EC at period ms)");
 +
 +static const struct dmi_system_id cros_ec_event_poll_dmi[] = {
 +	{
-+		/* Google Pixel Slate (Nocturne): EC event IRQ/notify never fires */
++		/* Google Pixel Slate (Nocturne): some EC event IRQ/notify never fires */
 +		.matches = {
 +			DMI_MATCH(DMI_SYS_VENDOR, "Google"),
 +			DMI_MATCH(DMI_PRODUCT_NAME, "Nocturne"),
@@ -101,14 +115,27 @@ index 1da79e3d2..b35271ff9 100644
 +	{ }
 +};
 +
-+/* Resolve the -1 "auto" sentinel exactly once, at first registration. */
-+static bool cros_ec_event_poll_enabled(void)
++/*
++ * Resolve this ec_dev's poll period. The module param is a hard override in
++ * either direction (0 = never poll any EC, >0 = always poll every EC at that
++ * period) for anyone who needs to force it. The default (-1, auto) only
++ * polls THIS ec_dev if the board is DMI-matched AND this EC's own transport
++ * ended up with no usable IRQ (ec_dev->irq is set from cros_ec_register()'s
++ * caller before this runs) -- an EC that already has a working IRQ is left
++ * alone regardless of what any other EC on the same board needs.
++ */
++static int cros_ec_event_poll_period(struct cros_ec_device *ec_dev)
 +{
-+	if (ec_event_poll_ms < 0)
-+		ec_event_poll_ms = dmi_check_system(cros_ec_event_poll_dmi) ?
-+				   CROS_EC_EVENT_POLL_DEFAULT_MS : 0;
++	if (ec_event_poll_ms == 0)
++		return 0;
++	if (ec_event_poll_ms > 0)
++		return ec_event_poll_ms;
 +
-+	return ec_event_poll_ms > 0;
++	if (ec_dev->irq > 0)
++		return 0;
++
++	return dmi_check_system(cros_ec_event_poll_dmi) ?
++		CROS_EC_EVENT_POLL_DEFAULT_MS : 0;
 +}
 +
 +static void cros_ec_event_poll(struct work_struct *work)
@@ -125,15 +152,15 @@ index 1da79e3d2..b35271ff9 100644
 +		ec_has_more_events = cros_ec_handle_event(ec_dev);
 +	} while (ec_has_more_events);
 +
-+	if (READ_ONCE(ec_event_poll_ms) > 0 && !ec_dev->suspended)
++	if (ec_dev->event_poll_ms > 0 && !ec_dev->suspended)
 +		schedule_delayed_work(&ec_dev->event_poll_work,
-+			msecs_to_jiffies(READ_ONCE(ec_event_poll_ms)));
++			msecs_to_jiffies(ec_dev->event_poll_ms));
 +}
 +
  static int cros_ec_sleep_event(struct cros_ec_device *ec_dev, u8 sleep_event)
  {
  	int ret;
-@@ -243,6 +306,9 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
+@@ -243,6 +327,9 @@
  		goto exit;
  	}
  
@@ -143,7 +170,7 @@ index 1da79e3d2..b35271ff9 100644
  	if (ec_dev->irq > 0) {
  		err = devm_request_threaded_irq(dev, ec_dev->irq,
  						cros_ec_irq_handler,
-@@ -329,6 +395,17 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
+@@ -329,6 +416,20 @@
  	if (ec_dev->mkbp_event_supported)
  		cros_ec_irq_thread(0, ec_dev);
  
@@ -151,17 +178,20 @@ index 1da79e3d2..b35271ff9 100644
 +	 * BobZKernel: on boards whose EC event IRQ/notify never fires, poll the
 +	 * event FIFO so buttons / sensors / lid keep working (see cros_ec_event_poll).
 +	 */
-+	if (ec_dev->mkbp_event_supported && cros_ec_event_poll_enabled()) {
-+		dev_info(dev, "EC event IRQ/notify unreliable on this board; polling FIFO every %d ms\n",
-+			 ec_event_poll_ms);
-+		schedule_delayed_work(&ec_dev->event_poll_work,
-+			msecs_to_jiffies(ec_event_poll_ms));
++	if (ec_dev->mkbp_event_supported) {
++		ec_dev->event_poll_ms = cros_ec_event_poll_period(ec_dev);
++		if (ec_dev->event_poll_ms > 0) {
++			dev_info(dev, "EC event IRQ/notify unreliable on this board; polling FIFO every %d ms\n",
++				 ec_dev->event_poll_ms);
++			schedule_delayed_work(&ec_dev->event_poll_work,
++				msecs_to_jiffies(ec_dev->event_poll_ms));
++		}
 +	}
 +
  	return 0;
  exit:
  	platform_device_unregister(ec_dev->ec);
-@@ -350,6 +427,9 @@ void cros_ec_unregister(struct cros_ec_device *ec_dev)
+@@ -350,6 +451,9 @@
  	scoped_guard(mutex, &ec_dev->lock)
  		ec_dev->registered = false;
  
@@ -171,7 +201,7 @@ index 1da79e3d2..b35271ff9 100644
  	if (ec_dev->mkbp_event_supported)
  		blocking_notifier_chain_unregister(&ec_dev->event_notifier,
  						   &ec_dev->notifier_ready);
-@@ -399,6 +479,9 @@ static void cros_ec_disable_irq(struct cros_ec_device *ec_dev)
+@@ -399,6 +503,9 @@
  
  	disable_irq(ec_dev->irq);
  	ec_dev->suspended = true;
@@ -181,20 +211,19 @@ index 1da79e3d2..b35271ff9 100644
  }
  
  /**
-@@ -486,6 +569,11 @@ static void cros_ec_enable_irq(struct cros_ec_device *ec_dev)
+@@ -486,6 +593,11 @@
  
  	if (ec_dev->wake_enabled)
  		disable_irq_wake(ec_dev->irq);
 +
 +	/* BobZKernel: resume FIFO polling if it was enabled for this board. */
-+	if (ec_dev->mkbp_event_supported && ec_event_poll_ms > 0)
++	if (ec_dev->mkbp_event_supported && ec_dev->event_poll_ms > 0)
 +		schedule_delayed_work(&ec_dev->event_poll_work,
-+			msecs_to_jiffies(ec_event_poll_ms));
++			msecs_to_jiffies(ec_dev->event_poll_ms));
  }
  
  /**
 diff --git a/include/linux/platform_data/cros_ec_proto.h b/include/linux/platform_data/cros_ec_proto.h
-index de1492372..24ed4e8da 100644
 --- a/include/linux/platform_data/cros_ec_proto.h
 +++ b/include/linux/platform_data/cros_ec_proto.h
 @@ -12,6 +12,7 @@
@@ -205,16 +234,21 @@ index de1492372..24ed4e8da 100644
  
  #include <linux/platform_data/cros_ec_commands.h>
  
-@@ -206,6 +207,13 @@ struct cros_ec_device {
+@@ -206,6 +207,18 @@
  	ktime_t last_event_time;
  	struct notifier_block notifier_ready;
  
 +	/*
-+	 * BobZKernel: fallback poll of the EC event FIFO for boards whose EC
-+	 * event IRQ/ACPI-notify never fires (e.g. Google Nocturne / Pixel
-+	 * Slate). Unused (never scheduled) on boards where the async path works.
++	 * BobZKernel: fallback poll of the EC event FIFO for an EC whose event
++	 * IRQ/ACPI-notify never fires (e.g. Google Nocturne / Pixel Slate's
++	 * main EC - its FPMCU, a separate cros_ec_device, has always had a
++	 * working IRQ and is unaffected). Decided per-device: see
++	 * cros_ec_event_poll_period() in cros_ec.c. event_poll_ms is the
++	 * resolved period for THIS ec_dev (0 = not polling); event_poll_work
++	 * is unused (never scheduled) when it's 0.
 +	 */
 +	struct delayed_work event_poll_work;
++	int event_poll_ms;
 +
  	/* The platform devices used by the mfd driver */
  	struct platform_device *ec;
