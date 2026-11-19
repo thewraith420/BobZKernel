@@ -6,7 +6,7 @@ Custom optimized Linux kernel **7.3.x** with the BORE scheduler, lazy preemption
 
 | Variant | Branch | Target hardware | Release |
 |---|---|---|---|
-| **Default (laptop)** | `master` / `linux-7.3` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | 7.3: build from source (release pending) · last 7.2: [v7.2.8](https://github.com/thewraith420/BobZKernel/releases/tag/v7.2.8) |
+| **Default (laptop)** | `master` / `linux-7.3` | Intel Raptor Lake (Lenovo LOQ 15IRH8, 12th-14th gen) | [v7.3.5](https://github.com/thewraith420/BobZKernel/releases/tag/v7.3.5) · last 7.2: [v7.2.8](https://github.com/thewraith420/BobZKernel/releases/tag/v7.2.8) |
 | **Nightfall** | `nightfall-kernel` | Most x86-64 PCs (Secure Boot off), for [Nightfall Boot Manager](https://github.com/thewraith420/nightfall-boot-manager) | [v7.2.7-nightfall](https://github.com/thewraith420/BobZKernel/releases/tag/v7.2.7-nightfall) |
 | **workpc** | `workpc` | AMD FX-series Piledriver desktop (AM3+ with Radeon HD7000-class iGPU) | [v7.1.0-workpc](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.0-workpc) |
 | **Generic x86-64-v2** | `generic-build` | Universal modern x86-64 (Intel Nehalem 2008+, AMD Bulldozer 2011+) | [v7.1.1-generic](https://github.com/thewraith420/BobZKernel/releases/tag/v7.1.1-generic) |
