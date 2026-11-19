@@ -1,0 +1,56 @@
+--- a/security/apparmor/include/secid.h
++++ b/security/apparmor/include/secid.h
+@@ -25,6 +25,7 @@
+ extern int apparmor_display_secid_mode;
+ 
+ struct aa_label *aa_secid_to_label(u32 secid);
++void apparmor_cred_getsecid(const struct cred *c, u32 *secid);
+ int apparmor_secid_to_secctx(u32 secid, struct lsm_context *cp);
+ int apparmor_lsmprop_to_secctx(struct lsm_prop *prop, struct lsm_context *cp);
+ int apparmor_secctx_to_secid(const char *secdata, u32 seclen, u32 *secid);
+--- a/security/apparmor/secid.c
++++ b/security/apparmor/secid.c
+@@ -77,6 +77,33 @@
+ 	return len;
+ }
+ 
++/**
++ * apparmor_cred_getsecid - get the secid of a cred's current label
++ * @c: the cred to query (NOT NULL)
++ * @secid: (output) the cred's label's secid, or AA_SECID_INVALID
++ *
++ * Every aa_label gets a secid at creation time (aa_label_init() calls
++ * aa_alloc_secid() unconditionally, including for the unconfined label),
++ * so this always has a real secid to report for any live cred - it was
++ * simply never exposed through this hook before. No AppArmor LSM was
++ * implementing security_cred_getsecid(), so callers of it (e.g. binder's
++ * txn_security_ctx) always got secid 0, which AppArmor never allocates
++ * (allocation starts at AA_FIRST_SECID=2) - every subsequent
++ * secid_to_secctx() lookup then failed with -EINVAL, regardless of the
++ * caller's actual label.
++ *
++ * No refcounting needed: secids are deliberately not refcounted against
++ * their label (see the comment on aa_secids above) - this matches the
++ * existing read of cred_label()/prop->apparmor.label in
++ * apparmor_lsmprop_to_secctx() below.
++ */
++void apparmor_cred_getsecid(const struct cred *c, u32 *secid)
++{
++	struct aa_label *label = cred_label(c);
++
++	*secid = label ? label->secid : AA_SECID_INVALID;
++}
++
+ int apparmor_secid_to_secctx(u32 secid, struct lsm_context *cp)
+ {
+ 	struct aa_label *label = aa_secid_to_label(secid);
+--- a/security/apparmor/lsm.c
++++ b/security/apparmor/lsm.c
+@@ -1763,6 +1763,7 @@
+ 	LSM_HOOK_INIT(audit_rule_free, aa_audit_rule_free),
+ #endif
+ 
++	LSM_HOOK_INIT(cred_getsecid, apparmor_cred_getsecid),
+ 	LSM_HOOK_INIT(secid_to_secctx, apparmor_secid_to_secctx),
+ 	LSM_HOOK_INIT(lsmprop_to_secctx, apparmor_lsmprop_to_secctx),
+ 	LSM_HOOK_INIT(secctx_to_secid, apparmor_secctx_to_secid),
